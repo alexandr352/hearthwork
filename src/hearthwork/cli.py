@@ -467,3 +467,8 @@ def main(argv=None):
         return fail(str(e))
     except KeyboardInterrupt:
         return 130
+    except BrokenPipeError:
+        # the reader went away (`operator status | head`): stop quietly, as a pipe expects
+        import os as _os
+        _os.dup2(_os.open(_os.devnull, _os.O_WRONLY), sys.stdout.fileno())
+        return 0
