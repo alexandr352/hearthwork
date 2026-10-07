@@ -288,16 +288,10 @@ def render(home_path=None, ui=False):
   <div><span>{money(sum(r.get('cost_usd') or 0 for r in week))}</span>7 days · {len(week)} units</div>
   <div><span>{f'{rate * 100:.0f}%' if rate is not None else '–'}</span>prompt cache hits, 7 days</div>
   <div><span>{money(sum(r.get('cost_usd') or 0 for r in all_rows))}</span>all time · {len(all_rows)} units</div>
-</div>
-<div class=legend>Each ticket is worked in <b>units</b>; work that ends in one commit is a <b>chain</b> of them.
-  <span class="step done investigation"><i>1</i> reads only</span>
-  <span class="step done execution"><i>2</i> changes code</span>
-  <span class="step done commit"><i>3</i> makes the commit <em>commit</em></span>
-  <span class="step current planned"><i>·</i> next</span>
-  <span class="step pending planned"><i>·</i> planned</span>
-  <span class="step failed execution"><i>·</i> stopped</span></div>"""
+</div>"""
     page = TEMPLATE.replace("{{BANNERS}}", "".join(banners)).replace("{{STATS}}", stats) \
         .replace("{{SECTIONS}}", "".join(sections) or "<p class=empty>No projects yet.</p>") \
+        .replace("{{MODES}}", "".join(f"<dt>{esc(m)}</dt><dd>{esc(d)}</dd>" for m, d in MODES.items())) \
         .replace("{{UPDATED}}", time.strftime("%Y-%m-%d %H:%M", time.localtime())) \
         .replace("{{REFRESH}}", "" if ui else '<meta http-equiv=refresh content=60>') \
         .replace("{{NOTE}}", "live" if ui else "refreshes every minute") \
@@ -354,8 +348,14 @@ h3 .mode:hover::after,h3 .mode:focus::after{content:attr(data-tip);position:abso
 .step.failed{border-color:var(--red)}.step.failed i{color:var(--red)}
 .step.current{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}.step.current i{color:var(--accent)}
 .step.pending{border-style:dashed;color:var(--mute)}
-.legend{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:12px;color:var(--mute);margin:-6px 0 6px}
-.legend .step{font-size:12px}
+dialog#help{max-width:min(620px,calc(100vw - 32px));max-height:calc(100vh - 48px);overflow:auto;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:20px 22px;box-shadow:0 20px 50px rgba(0,0,0,.25)}
+dialog#help::backdrop{background:rgba(20,16,12,.45)}
+dialog#help header{display:flex;justify-content:space-between;align-items:center;gap:12px}
+dialog#help h2{margin:0;font-size:18px}dialog#help h3{font-size:14px;margin:18px 0 6px}
+dialog#help p{margin:8px 0;font-size:14px}
+.legendrow{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+dialog#help dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;font-size:13.5px;margin:6px 0}
+dialog#help dt{font-weight:700;color:var(--accent);letter-spacing:.03em}dialog#help dd{margin:0}
 .chip{font-size:11px;padding:1px 7px;border-radius:99px;border:1px solid var(--line);color:var(--mute)}
 .chip.execution,.chip.commit{border-color:var(--ink);color:var(--ink)}
 .did{flex-basis:100%;font-size:13px;color:var(--mute);padding-left:18px}
@@ -374,14 +374,44 @@ button.theme{background:none;border:1px solid var(--line);color:var(--mute);bord
 </style></head>
 <body><main id=log>
 <div class=top><h1>Hearthwork <small>updated {{UPDATED}} · {{NOTE}}</small></h1>
-<span class=tools>{{TOPBTN}}<button class=theme onclick="var r=document.documentElement,d=r.dataset.theme==='dark'||(!r.dataset.theme&&matchMedia('(prefers-color-scheme: dark)').matches);r.dataset.theme=d?'light':'dark';try{localStorage.setItem('hw-theme',r.dataset.theme)}catch(e){}">theme</button></span></div>
+<span class=tools>{{TOPBTN}}<button class=theme onclick="var r=document.documentElement,d=r.dataset.theme==='dark'||(!r.dataset.theme&&matchMedia('(prefers-color-scheme: dark)').matches);r.dataset.theme=d?'light':'dark';try{localStorage.setItem('hw-theme',r.dataset.theme)}catch(e){}">theme</button><button class=theme onclick="document.getElementById('help').showModal()" aria-label="how to read this page" title="how to read this page">?</button></span></div>
 {{BANNERS}}
 {{STATS}}
+<dialog id=help aria-labelledby=help-title>
+  <header><h2 id=help-title>How to read this page</h2><button class=theme onclick="this.closest('dialog').close()" aria-label="close">close</button></header>
+  <p>A <b>ticket</b> is worked in <b>units</b>. In each unit the <b>operator</b> plans one bounded step, the
+  <b>executor</b> does it in your checkout, and the operator judges the report against what git shows.
+  The operator never reads your code itself; it works from reports and git, so the judge stays
+  independent of whoever did the work.</p>
+  <p>Work that ends in one commit is a <b>chain</b> of units: the investigations it needs, the changes,
+  and a last step that runs the tests and makes the one commit.</p>
+  <div class=legendrow>
+    <span class="step done investigation"><i>1</i> reads only</span>
+    <span class="step done execution"><i>2</i> changes code</span>
+    <span class="step done commit"><i>3</i> makes the commit <em>commit</em></span>
+    <span class="step current planned"><i>·</i> next</span>
+    <span class="step pending planned"><i>·</i> planned</span>
+    <span class="step retry execution"><i>·</i> retried</span>
+    <span class="step failed execution"><i>·</i> stopped</span>
+  </div>
+  <h3>The kind of work, named after each ticket</h3>
+  <dl>{{MODES}}</dl>
+  <h3>When it stops</h3>
+  <p>When the operator needs a decision only you can make, the ticket <b>halts</b> with its question.
+  Answer with <code>operator rule "…"</code>, or talk it through with the spirit. Your answer binds every
+  later unit.</p>
+  <h3>Costs</h3>
+  <p>Every Claude call is metered per phase (plan, execute, judge) at the CLI's own figures. A unit done
+  by your own Claude Code session (MCP mode) shows as not metered: hearthwork cannot see what your
+  session costs.</p>
+</dialog>
+
 {{SECTIONS}}
 </main>
 <script>
 try{var t=localStorage.getItem('hw-theme');if(t)document.documentElement.dataset.theme=t}catch(e){}
 if(location.hash){var el=document.querySelector(location.hash);if(el&&el.tagName==='DETAILS')el.open=true}
+var hd=document.getElementById('help');if(hd)hd.addEventListener('click',function(e){if(e.target===hd)hd.close()});
 addEventListener('hashchange',function(){var el=document.querySelector(location.hash);if(el&&el.tagName==='DETAILS'){el.open=true}});
 </script>
 </body></html>
