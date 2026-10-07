@@ -400,8 +400,8 @@ table.md th{color:var(--mute);font-weight:600}.msg.err{color:var(--red)}
 #chat-about{display:flex;align-items:center;gap:8px;margin:0 14px;padding:6px 10px;border:1px dashed var(--accent);border-radius:8px;font-size:12px;color:var(--accent)}
 #chat-about span{flex:1}
 #chat-about[hidden],.pill[hidden],button[hidden]{display:none}
-#chat-form{display:flex;align-items:center;gap:8px;padding:12px 16px 16px 14px;border-top:1px solid var(--line)}
-#chat-in{flex:1;height:40px;resize:none;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:20px;padding:9px 16px;font:14px/20px system-ui,sans-serif;overflow-y:auto}
+#chat-form{display:flex;align-items:flex-end;gap:8px;padding:12px 16px 16px 14px;border-top:1px solid var(--line)}
+#chat-in{flex:1;height:40px;min-height:40px;max-height:140px;resize:none;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:20px;padding:9px 16px;font:14px/20px system-ui,sans-serif;overflow-y:hidden;box-sizing:border-box}
 #chat-in:focus{outline:none;border-color:var(--accent)}
 .pill{height:40px;min-width:80px;padding:0 18px;border:0;border-radius:20px;background:var(--accent);color:#fff;font:600 14px/40px system-ui,sans-serif;cursor:pointer;box-sizing:border-box}
 .pill:disabled{opacity:.5;cursor:wait}
@@ -450,12 +450,15 @@ function setAbout(a){about=a;aboutBox.hidden=!a;if(a)aboutBox.querySelector('spa
 aboutBox.querySelector('button').onclick=function(){setAbout(null)};
 document.addEventListener('click',function(e){var b=e.target.closest('button.ask');if(!b)return;var p=b.dataset.ask.split('|');
   setAbout({project:p[0],ticket:p[1],unit:p[2]||null});show(true);input.focus();if(!input.value&&b.dataset.text)input.value=b.dataset.text;if(!input.value)input.value=p[1]==='atlas'?'Let\'s go through the open atlas questions, one at a time.':p[2]?'What happened in this unit, and what comes next?':'Why did this halt, and what should I decide?';});
-function show(on){document.body.classList.toggle('chat-hidden',!on);document.getElementById('chat-open').hidden=on;try{localStorage.setItem('hw-chat',on?'1':'0')}catch(e){}}
+function show(on){document.body.classList.toggle('chat-hidden',!on);setTimeout(function(){try{fit()}catch(e){}},0);document.getElementById('chat-open').hidden=on;try{localStorage.setItem('hw-chat',on?'1':'0')}catch(e){}}
 document.getElementById('chat-min').onclick=function(){show(false)};document.getElementById('chat-open').onclick=function(){show(true)};
 try{if(localStorage.getItem('hw-chat')==='0')show(false)}catch(e){}
 document.getElementById('chat-new').onclick=function(){fetch('/api/new',{method:'POST',headers:{'X-HW-Key':KEY},body:'{}'});log.innerHTML='';add('msg sys','A new conversation. The spirit still remembers what it wrote to its memory.');};
 input.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();form.requestSubmit()}});
-form.onsubmit=async function(e){e.preventDefault();var text=input.value.trim();if(!text)return;input.value='';add('msg me',text);
+function fit(){input.style.height='40px';var h=Math.min(input.scrollHeight+2,140);input.style.height=(h>42?h:40)+'px';input.style.overflowY=input.scrollHeight+2>140?'auto':'hidden'}
+input.addEventListener('input',fit);window.addEventListener('resize',fit);
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fit);setTimeout(fit,0);
+form.onsubmit=async function(e){e.preventDefault();var text=input.value.trim();if(!text)return;input.value='';fit();add('msg me',text);
   var btn=form.querySelector('button');btn.disabled=true;var out=add('msg','…'),got=false,a=about;setAbout(null);
   try{var r=await fetch('/api/chat',{method:'POST',headers:{'X-HW-Key':KEY,'Content-Type':'application/json'},body:JSON.stringify({message:text,about:a})});
     if(!r.ok){out.className='msg err';out.textContent=await r.text();return}
