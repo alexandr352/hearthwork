@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hearthwork"
+version = "0.1.0"
+description = "A plan -> execute -> judge loop for Claude Code, with a home, a work log, and a spirit you can talk to."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [{ name = "Alexandr Fedoseev" }]
+keywords = ["claude-code", "agents", "llm", "automation", "mcp"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: POSIX",
+  "Environment :: Console",
+  "Topic :: Software Development",
+]
+dependencies = []
+
+[project.scripts]
+operator = "hearthwork.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/alexandr352/hearthwork"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+hearthwork = ["doctrine/**/*.md"]

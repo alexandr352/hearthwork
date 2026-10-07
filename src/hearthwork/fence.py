@@ -1,0 +1,348 @@
+#!/usr/bin/env python3
+"""The fence: a PreToolUse hook that every tool call of a hearthwork session passes.
+
+Default-deny. A call is allowed only when its mode's rules allow it, and any error
+inside the fence denies. It is a GUARD RAIL, not a sandbox: it keeps an honest
+session inside its lane and stops the common accidents (a push, a write outside the
+checkout, a read of ~/.ssh, a background job), but a determined process with a shell
+can find a way past any pattern check. For unattended runs, use a separate OS user.
+
+Modes (HEARTHWORK_FENCE_POLICY carries the policy as JSON):
+  executor   works in the repository: edits inside it, a shell with git rules
+  operator   plans and judges: reads and writes its own directory only, no shell
+  spirit     talks with you: reads the home and the repositories, writes its memory,
+             runs `operator <command>` and read-only git
+"""
+
+import json
+import os
+import re
+import shlex
+import sys
+import time
+from pathlib import Path
+
+POLICY = {}
+HOME = str(Path.home())
+
+SECRET_NAMES = re.compile(
+    r"(^|/)(\.ssh|\.gnupg|\.aws|\.azure|\.kube|\.docker|\.netrc|\.pgpass|\.npmrc|\.pypirc|"
+    r"\.git-credentials|\.config/gh|\.config/gcloud|\.claude/\.credentials\.json|\.claude\.json|"
+    r"id_rsa|id_ed25519|id_ecdsa)(/|$)")
+# Caches a build may touch under the home directory; nothing else under it is allowed.
+HOME_CACHES = (".cache", ".npm", ".nvm", ".volta", ".cargo/registry", ".rustup", ".gradle",
+               ".m2", ".pnpm-store", ".local/share/pnpm", ".yarn", ".bun", ".deno", "go/pkg")
+
+ALWAYS_OK = {"TodoWrite", "ExitPlanMode", "EnterPlanMode", "StructuredOutput"}
+NETWORK_CMDS = {"curl", "wget", "nc", "ncat", "netcat", "ssh", "scp", "sftp", "rsync", "telnet", "ftp", "socat"}
+PRIVILEGE_CMDS = {"sudo", "su", "doas", "pkexec", "setpriv", "chroot"}
+DETACH_CMDS = {"nohup", "disown", "setsid", "systemd-run", "crontab", "at", "batch", "screen", "tmux"}
+SHELL_CMDS = {"eval", "exec", "sh", "bash", "zsh", "dash", "ksh", "fish"}
+WRAPPERS = {"timeout", "env", "time", "nice", "ionice", "xargs", "command", "builtin", "stdbuf"}
+PACKAGE_NET = re.compile(r"\b(npm|pnpm|yarn|bun)\s+(install|i|add|ci|update|upgrade)\b|\bpip3?\s+install\b|"
+                         r"\buv\s+(pip\s+install|add|sync)\b|\bcargo\s+(install|add|update)\b|\bgo\s+(get|install)\b")
+GIT_DENY = {"push", "config", "remote", "reset", "rebase", "filter-branch", "filter-repo", "update-ref",
+            "symbolic-ref", "credential", "submodule", "gc", "prune", "daemon", "fetch", "pull", "clone",
+            "merge", "send-email", "request-pull", "worktree", "replace", "notes"}
+GIT_READ = {"status", "diff", "log", "show", "blame", "ls-files", "rev-parse", "merge-base", "rev-list",
+            "describe", "shortlog", "reflog", "cat-file", "ls-tree", "name-rev", "for-each-ref", "grep", "branch"}
+
+
+def log(decision, tool, reason, detail=""):
+    path = POLICY.get("log")
+    if not path:
+        return
+    try:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write("%s\t%s\t%s\t%s\t%s\t%.300s\n" % (time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    POLICY.get("mode", "?"), decision, tool, reason, str(detail).replace("\n", " ")))
+    except OSError:
+        pass
+
+
+def decide(decision, tool, reason, detail=""):
+    log(decision, tool, reason, detail)
+    print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
+                                             "permissionDecision": decision,
+                                             "permissionDecisionReason": reason}}))
+    sys.exit(0)
+
+
+def allow(tool, reason="", detail=""):
+    decide("allow", tool, reason or "allowed", detail)
+
+
+def deny(tool, reason, detail=""):
+    decide("deny", tool, "hearthwork fence: " + reason, detail)
+
+
+def norm(path, cwd):
+    p = os.path.expanduser(os.path.expandvars(str(path)))
+    if not os.path.isabs(p):
+        p = os.path.join(cwd, p)
+    return os.path.realpath(p)
+
+
+def under(path, roots):
+    return any(path == r or path.startswith(r.rstrip("/") + "/") for r in roots)
+
+
+def secret(path):
+    return bool(SECRET_NAMES.search(path)) or re.search(r"(^|/)\.env(\.[\w.-]+)?$", path) is not None and not under(path, POLICY.get("env_ok", []))
+
+
+def home_cache(path):
+    return under(path, [os.path.join(HOME, c) for c in HOME_CACHES])
+
+
+def roots(key):
+    return [os.path.realpath(os.path.expanduser(r)) for r in POLICY.get(key, [])]
+
+
+# --- shell -------------------------------------------------------------------
+
+def strip_heredocs(cmd):
+    out, lines, i = [], cmd.split("\n"), 0
+    while i < len(lines):
+        m = re.search(r"<<-?\s*['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?", lines[i])
+        out.append(lines[i])
+        i += 1
+        if m:
+            while i < len(lines) and lines[i].strip() != m.group(1):
+                i += 1
+            i += 1
+    return "\n".join(out)
+
+
+def path_mentions(cmd):
+    """Every path-like string in the command, quoted or not. Quotes do not hide a path:
+    the scan reads the raw text, so `cat "$HOME/.ssh/id_ed25519"` is seen whole."""
+    text = cmd.replace("${HOME}", HOME).replace("$HOME", HOME)
+    text = re.sub(r"(^|[\s='\"(:])~(?=/|\s|$|['\"])", lambda m: m.group(1) + HOME, text)
+    return [m.group(0) for m in re.finditer(r"/[^\s'\"`;&|<>(){}$]*", text)]
+
+
+def segments(body):
+    """The simple commands of a shell line, each as argv with wrappers peeled off
+    (`timeout 60 git push` is a git push). Splits on ; && || | & newlines, $( and backticks."""
+    out = []
+    for seg in re.split(r"&&|\|\||;|\||&|\n|\$\(|`|\(|\)", body):
+        seg = seg.strip()
+        if not seg:
+            continue
+        try:
+            argv = shlex.split(seg)
+        except ValueError:
+            argv = seg.split()
+        while argv and (re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", argv[0]) or argv[0] in WRAPPERS):
+            head = argv.pop(0)
+            if head == "timeout":
+                while argv and (argv[0].startswith("-") or re.match(r"^\d+[smhd]?$", argv[0])):
+                    argv.pop(0)
+            elif head in ("env", "nice", "ionice", "stdbuf", "xargs"):
+                while argv and argv[0].startswith("-"):
+                    argv.pop(0)
+        if argv:
+            out.append(argv)
+    return out
+
+
+def git_verb(argv):
+    args = argv[1:]
+    while args and args[0].startswith("-"):
+        args = args[2:] if args[0] in ("-C", "-c", "--git-dir", "--work-tree", "--namespace") else args[1:]
+    return (args[0], args[1:]) if args else (None, [])
+
+
+def shell_check(cmd, cwd, write_roots):
+    body = strip_heredocs(cmd)
+    netcmds = POLICY.get("network_commands", [])
+    allowed_net = bool(netcmds) and any(body.strip().startswith(c) for c in netcmds)
+    if re.search(r"&\s*$|&\s*\n|&\s*[;)]", body.replace("&&", "")):
+        return "background jobs are not allowed: run in the foreground and wait"
+    for argv in segments(body):
+        name = os.path.basename(argv[0])
+        if name in PRIVILEGE_CMDS:
+            return "privilege escalation is not allowed"
+        if name in DETACH_CMDS:
+            return "background and detached jobs are not allowed: run in the foreground and wait"
+        if name in SHELL_CMDS:
+            return "eval, exec and nested shells (sh -c) are not allowed: run the command directly"
+        if name in NETWORK_CMDS and not allowed_net:
+            return "network commands are not allowed (add a command prefix to network_commands in project.toml)"
+        if name == "git":
+            verb, rest = git_verb(argv)
+            if verb in GIT_DENY:
+                return f"git {verb} is not the loop's: the loop ends at committed local work"
+            if verb == "commit":
+                if any(a in ("--no-verify", "-n", "--amend") for a in rest):
+                    return "commits never skip hooks and never amend"
+                if POLICY.get("_branch") in POLICY.get("protected", []):
+                    return f"the checkout is on {POLICY['_branch']}, which is protected: create the ticket's branch first"
+            if verb in ("checkout", "switch", "branch"):
+                for b in POLICY.get("protected", []):
+                    if b in rest:
+                        return f"{b} is protected: work happens on the ticket's branch"
+    if PACKAGE_NET.search(body) and not allowed_net:
+        return "package installs reach the network and are not allowed (add the prefix to network_commands)"
+    for raw in path_mentions(body):
+        p = os.path.realpath(raw)
+        if secret(p):
+            return f"{raw} holds secrets and is out of bounds"
+        if p == HOME or under(p, [HOME]):
+            if not (under(p, write_roots) or under(p, roots("read_roots")) or home_cache(p)):
+                return f"{raw} is outside the repository"
+    for m in re.finditer(r"(?:^|[^<>&0-9])>>?\s*['\"]?([^\s'\";&|]+)", body):
+        tgt = m.group(1)
+        if tgt.startswith("/dev/"):
+            continue
+        if not under(norm(tgt, cwd), write_roots + ["/tmp"]):
+            return f"writing to {tgt} is outside the repository"
+    if re.search(r"(?:^|[\s;&|])rm\s+(-\w*[rf]\w*\s+)+(/|~|\$HOME|\*)(\s|$)", body):
+        return "rm on / or the home directory is not allowed"
+    return None
+
+
+# --- modes -------------------------------------------------------------------
+
+def file_tool_path(ti):
+    return ti.get("file_path") or ti.get("notebook_path") or ti.get("path")
+
+
+def check_executor(tool, ti, cwd):
+    repo = os.path.realpath(POLICY["repo"])
+    write_roots = [repo, "/tmp"]
+    if tool in ("Read", "Grep", "Glob", "LS"):
+        p = file_tool_path(ti)
+        if not p:
+            allow(tool, "search from the working directory")
+        p = norm(p, cwd)
+        if secret(p):
+            deny(tool, f"{p} holds secrets and is out of bounds")
+        if under(p, [HOME]) and not (under(p, [repo]) or under(p, roots("read_roots")) or home_cache(p)):
+            deny(tool, f"{p} is outside the repository")
+        allow(tool, "read")
+    if tool in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
+        p = file_tool_path(ti)
+        if not p:
+            deny(tool, "a write without a path")
+        p = norm(p, cwd)
+        if not under(p, write_roots):
+            deny(tool, f"{p} is outside the repository")
+        if under(p, [os.path.join(repo, ".git")]):
+            deny(tool, "the repository's .git directory is not edited by hand")
+        if secret(p):
+            deny(tool, f"{p} holds secrets")
+        allow(tool, "write inside the repository")
+    if tool == "Bash":
+        reason = shell_check(ti.get("command", ""), cwd, write_roots)
+        if reason:
+            deny(tool, reason, ti.get("command", ""))
+        allow(tool, "shell", ti.get("command", ""))
+    if tool in ("Agent", "Task", "Skill"):
+        if ti.get("run_in_background"):
+            deny(tool, "sub-agents run in the foreground: this turn is the only one you get")
+        allow(tool, "sub-agent or skill")
+    deny(tool, f"{tool} is not available to the executor")
+
+
+def check_operator(tool, ti, cwd):
+    own = [os.path.realpath(POLICY["own_dir"])]
+    if tool in ("Read", "Grep", "Glob", "LS", "Edit", "Write", "MultiEdit"):
+        p = file_tool_path(ti)
+        p = norm(p, cwd) if p else os.path.realpath(cwd)
+        if not under(p, own):
+            deny(tool, "the operator reads and writes only its own directory; the repository is the executor's")
+        allow(tool, "own directory")
+    if tool == "Skill":
+        allow(tool, "skill")
+    deny(tool, f"{tool} is not available to the operator")
+
+
+def check_spirit(tool, ti, cwd):
+    home = os.path.realpath(POLICY["home"])
+    readable = [home] + roots("repos")
+    memory = [os.path.join(home, "spirit", "memory")]
+    if tool in ("Read", "Grep", "Glob", "LS"):
+        p = file_tool_path(ti)
+        p = norm(p, cwd) if p else os.path.realpath(cwd)
+        if secret(p):
+            deny(tool, f"{p} holds secrets")
+        if not under(p, readable):
+            deny(tool, "the spirit reads the home and the project repositories only")
+        allow(tool, "read")
+    if tool in ("Edit", "Write", "MultiEdit"):
+        p = norm(file_tool_path(ti) or "", cwd)
+        if not under(p, memory):
+            deny(tool, "the spirit writes only its memory; the loop's records change through `operator` commands")
+        allow(tool, "memory")
+    if tool == "Bash":
+        cmd = ti.get("command", "").strip()
+        if re.search(r"[;&|`<>\n]|\$\(", cmd):
+            deny(tool, "one command at a time, no pipes, redirects or substitutions", cmd)
+        try:
+            argv = shlex.split(cmd)
+        except ValueError:
+            deny(tool, "the command does not parse", cmd)
+        if argv and os.path.basename(argv[0]) == "operator" and len(argv) > 1 and argv[1] not in ("chat", "ui", "mcp"):
+            allow(tool, "operator command", cmd)
+        if len(argv) >= 2 and argv[0] == "git":
+            args = argv[1:]
+            if args[:1] == ["-C"] and len(args) >= 3:
+                if not under(norm(args[1], cwd), readable):
+                    deny(tool, "git -C outside the project repositories", cmd)
+                args = args[2:]
+            if args and args[0] in GIT_READ and not (args[0] == "branch" and any(a in ("-d", "-D", "-m", "-M", "--delete", "--move", "-f", "--force") for a in args[1:])):
+                allow(tool, "read-only git", cmd)
+        deny(tool, "the spirit runs `operator <command>` and read-only git, nothing else", cmd)
+    if tool == "Skill":
+        allow(tool, "skill")
+    deny(tool, f"{tool} is not available to the spirit")
+
+
+def main():
+    global POLICY
+    raw = os.environ.get("HEARTHWORK_FENCE_POLICY")
+    if not raw:
+        POLICY = {}
+        decide("deny", "?", "hearthwork fence: no policy was given, so nothing is allowed")
+    POLICY = json.loads(raw)
+    data = json.load(sys.stdin)
+    tool = data.get("tool_name", "")
+    ti = data.get("tool_input") or {}
+    cwd = str(data.get("cwd") or os.getcwd())
+    if tool in ALWAYS_OK:
+        allow(tool, "harness-internal")
+    mode = POLICY.get("mode")
+    if mode == "executor":
+        try:
+            import subprocess
+            POLICY["_branch"] = subprocess.run(["git", "-C", POLICY["repo"], "rev-parse", "--abbrev-ref", "HEAD"],
+                                               capture_output=True, text=True, timeout=10).stdout.strip()
+        except Exception:
+            POLICY["_branch"] = None
+        check_executor(tool, ti, cwd)
+    elif mode == "operator":
+        check_operator(tool, ti, cwd)
+    elif mode == "spirit":
+        check_spirit(tool, ti, cwd)
+    deny(tool, f"unknown fence mode {mode!r}")
+
+
+def settings_for(policy_log=None):
+    """The --settings JSON that attaches this fence to every tool call."""
+    cmd = f"{shlex.quote(sys.executable)} {shlex.quote(os.path.abspath(__file__))}"
+    return {"hooks": {"PreToolUse": [{"matcher": "*", "hooks": [{"type": "command", "command": cmd}]}]},
+            "disableAllHooks": False}
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception as e:
+        log("deny", "?", f"fence internal error: {e.__class__.__name__}: {e}")
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
+                                                 "permissionDecisionReason": "hearthwork fence: internal error, denied"}}))
+        sys.exit(0)

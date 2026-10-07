@@ -1,0 +1,362 @@
+"""`operator` — the command line of hearthwork."""
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+from . import __version__, home
+from .records import Ticket, now_iso, read_meter
+
+
+def out(msg=""):
+    print(msg, flush=True)
+
+
+def fail(msg):
+    print(f"operator: {msg}", file=sys.stderr)
+    return 2
+
+
+def project_of(args):
+    return home.resolve_project(getattr(args, "project", None))
+
+
+# --- init and projects -----------------------------------------------------------
+
+def cmd_init(args):
+    h, created = home.init_home()
+    out(f"home: {h}")
+    for p in created:
+        out(f"  created {p.relative_to(h)}")
+    if not created:
+        out("  (already set up)")
+    out("\nnext: operator project add <name> --repo <path to a git checkout>")
+    return 0
+
+
+def cmd_project_add(args):
+    home.init_home()
+    p = home.add_project(args.name, args.repo, args.trunk)
+    out(f"project {p.name}: {p.repo} (trunk {p.trunk})")
+    out(f"  its records: {p.dir}")
+    out(f"  edit {p.dir / 'project.toml'} to adjust protected branches and network commands")
+    out(f"  {p.dir / 'atlas.md'} is the map the executor reads: a few lines on how to build and test help a lot")
+    out("\nnext: operator ticket new <ID> --title \"...\" --file <ticket.md>")
+    return 0
+
+
+def cmd_project_list(args):
+    ps = home.projects()
+    if not ps:
+        out("no projects yet: operator project add <name> --repo <path>")
+    for p in ps:
+        st = p.read_state()
+        out(f"{p.name:20} {p.repo}  active={st.get('active_ticket') or '-'}"
+            + (f"  HALTED" if st.get("halted") else ""))
+    return 0
+
+
+def cmd_upgrade(args):
+    for p in home.projects():
+        home.refresh_doctrine(p.dir)
+        out(f"{p.name}: operator doctrine refreshed")
+    return 0
+
+
+# --- tickets ---------------------------------------------------------------------
+
+def cmd_ticket_new(args):
+    p = project_of(args)
+    if not home.TICKET_ID.match(args.id):
+        return fail("a ticket id is letters, digits, '.', '_' or '-' (e.g. T-12, bug-checkout)")
+    t = Ticket(p, args.id)
+    if t.exists():
+        return fail(f"ticket {args.id} already exists")
+    if args.file:
+        body = Path(args.file).read_text(encoding="utf-8")
+    elif args.text:
+        body = args.text
+    elif not sys.stdin.isatty():
+        body = sys.stdin.read()
+    else:
+        return fail("give the ticket text with --file, --text, or on stdin")
+    title = args.title or body.strip().splitlines()[0].lstrip("# ").strip()[:120]
+    t.dir.mkdir(parents=True, exist_ok=True)
+    home.write_atomic(t.path("ticket.md"), f"# {args.id} — {title}\n\n{body.strip()}\n")
+    t.write("meta.json", {"id": args.id, "title": title, "created": now_iso()})
+    st = p.read_state()
+    if not st.get("active_ticket") or args.use:
+        st["active_ticket"] = args.id
+        p.write_state(st)
+        out(f"ticket {args.id} created and active")
+    else:
+        out(f"ticket {args.id} created (active stays {st['active_ticket']}; `operator ticket use {args.id}` to switch)")
+    return 0
+
+
+def cmd_ticket_list(args):
+    p = project_of(args)
+    st = p.read_state()
+    if not p.tickets.is_dir():
+        return 0
+    for d in sorted(p.tickets.iterdir()):
+        t = Ticket(p, d.name)
+        if not t.exists():
+            continue
+        meta = t.read("meta.json") or {}
+        mark = "*" if st.get("active_ticket") == d.name else " "
+        ready = " ready" if d.name in (st.get("ready") or []) else ""
+        out(f"{mark} {d.name:16} units={len(t.units()):3}{ready}  {meta.get('title', '')}")
+    return 0
+
+
+def cmd_ticket_use(args):
+    p = project_of(args)
+    if not Ticket(p, args.id).exists():
+        return fail(f"no ticket {args.id}")
+    st = p.read_state()
+    if st.get("halted") and st["halted"].get("ticket") != args.id:
+        out(f"note: the project is halted on {st['halted'].get('ticket')}; `operator resume` lifts it")
+    st["active_ticket"] = args.id
+    st["ready"] = [x for x in (st.get("ready") or []) if x != args.id]
+    p.write_state(st)
+    out(f"active ticket: {args.id}")
+    return 0
+
+
+# --- the loop --------------------------------------------------------------------
+
+def cmd_run(args):
+    from .loop import Loop
+    p = project_of(args)
+    cfg = home.load_config()
+    loop = Loop(p, cfg, log=lambda m: out(f"[{now_iso()}] {m}"))
+    spent, units = 0.0, 0
+    while True:
+        o = loop.run_unit()
+        spent += o.cost_usd or 0.0
+        if o.unit is not None:
+            units += 1
+        out(f"[{now_iso()}] {o.status}: {o.message}  (${o.cost_usd:.2f})")
+        if not o.keep_going:
+            break
+        if args.units and units >= args.units:
+            break
+        if args.max_cost and spent >= args.max_cost:
+            out(f"stopping: ${spent:.2f} spent, the limit is ${args.max_cost:.2f}")
+            break
+    out(f"spent ${spent:.2f} over {units} unit(s)")
+    return 0 if o.status in ("continue", "ticket-ready", "idle", "busy", "walled") else 1
+
+
+def cmd_status(args):
+    ps = [project_of(args)] if args.project else home.projects()
+    if not ps:
+        out("no projects yet: operator init, then operator project add")
+        return 0
+    for p in ps:
+        st = p.read_state()
+        meter = read_meter(p)
+        spent = sum(r.get("cost_usd") or 0 for r in meter)
+        out(f"{p.name} — {p.repo}")
+        if st.get("halted"):
+            h = st["halted"]
+            out(f"  HALTED on {h.get('ticket')} unit {h.get('unit')}: {h.get('reason')}")
+            out("  answer with: operator rule \"<your decision>\"   (or: operator resume)")
+        active = st.get("active_ticket")
+        out(f"  active ticket: {active or '-'}")
+        if active:
+            t = Ticket(p, active)
+            last = None
+            for n in reversed(t.units()):
+                v = t.unit_dir(n) / "verdict.json"
+                if v.exists():
+                    last = (n, json.loads(v.read_text()))
+                    break
+            if last:
+                n, v = last
+                out(f"  unit {n}: {v.get('action')} — {v.get('reason')}")
+                out(f"  progress: {v.get('units_done')} of {v.get('units_planned')} units done; next: {v.get('next')}")
+            for name, what in (("resume.json", "an executor session waits to be resumed"),
+                               ("judge-pending.json", "a report waits to be judged"),
+                               ("chain.json", "a chain is open")):
+                if t.path(name).exists():
+                    out(f"  pending: {what}")
+            tick = [r for r in meter if r.get("ticket") == active]
+            out(f"  this ticket: {len(tick)} units, ${sum(r.get('cost_usd') or 0 for r in tick):.2f}")
+        if st.get("ready"):
+            out(f"  ready for you: {', '.join(st['ready'])}")
+        out(f"  all units: {len(meter)}, ${spent:.2f}")
+    return 0
+
+
+def cmd_halt(args):
+    p = project_of(args)
+    st = p.read_state()
+    st["halted"] = {"reason": args.reason, "ticket": st.get("active_ticket"), "unit": None, "at": now_iso(), "by": "you"}
+    p.write_state(st)
+    out("halted")
+    return 0
+
+
+def cmd_resume(args):
+    p = project_of(args)
+    st = p.read_state()
+    if not st.pop("halted", None):
+        out("not halted")
+        return 0
+    st["failures"] = 0
+    p.write_state(st)
+    out("resumed: the next run continues")
+    return 0
+
+
+def cmd_rule(args):
+    p = project_of(args)
+    st = p.read_state()
+    tid = (st.get("halted") or {}).get("ticket") or st.get("active_ticket")
+    if not tid:
+        return fail("no ticket to rule on")
+    t = Ticket(p, tid)
+    halt = st.get("halted") or {}
+    entry = f"\n## {now_iso()}\n"
+    if halt.get("reason"):
+        entry += f"Question: {halt['reason']}\n"
+    entry += f"Ruling: {args.text.strip()}\n"
+    with open(t.path("rulings.md"), "a", encoding="utf-8") as f:
+        if f.tell() == 0:
+            f.write(f"# Rulings on {tid}\n\nThe person's answers. Each binds every later unit.\n")
+        f.write(entry)
+    st.pop("halted", None)
+    st["failures"] = 0
+    p.write_state(st)
+    out(f"ruling recorded on {tid}; the halt is lifted")
+    return 0
+
+
+# --- the page, the spirit, the doctor -------------------------------------------
+
+def cmd_log(args):
+    from . import worklog
+    path = worklog.build()
+    out(str(path))
+    return 0
+
+
+def cmd_chat(args):
+    h, _ = home.init_home()
+    spirit = h / "spirit"
+    cfg = home.load_config()
+    claude = shutil.which(cfg["claude"]["bin"]) or cfg["claude"]["bin"]
+    from . import claude as cl, fence
+    settings = fence.settings_for()
+    settings["claudeMdExcludes"] = cl.doctrine_excludes(spirit)
+    repos = [str(p.repo) for p in home.projects()]
+    policy = {"mode": "spirit", "home": str(h), "repos": repos, "log": str(spirit / "fence.log")}
+    env = dict(os.environ, HEARTHWORK_FENCE_POLICY=json.dumps(policy))
+    bindir = str(Path(sys.argv[0]).resolve().parent)
+    env["PATH"] = bindir + os.pathsep + env.get("PATH", "")
+    argv = [claude, "--settings", json.dumps(settings), "--setting-sources", "project",
+            "--add-dir", str(h)] + sum((["--add-dir", r] for r in repos), [])
+    if args.model:
+        argv += ["--model", args.model]
+    os.chdir(spirit)
+    os.execvpe(claude, argv, env)
+
+
+def cmd_doctor(args):
+    ok = True
+    cfg = home.load_config()
+    exe = shutil.which(cfg["claude"]["bin"])
+    out(f"claude: {exe or 'NOT FOUND'}")
+    if exe:
+        v = subprocess.run([exe, "--version"], capture_output=True, text=True).stdout.strip()
+        out(f"  version: {v}")
+    else:
+        ok = False
+    out(f"git: {shutil.which('git') or 'NOT FOUND'}")
+    ok = ok and bool(shutil.which("git"))
+    h = home.home_dir()
+    out(f"home: {h} {'(ok)' if (h / 'config.toml').exists() else '(not set up: operator init)'}")
+    settings = Path.home() / ".claude" / "settings.json"
+    try:
+        if json.loads(settings.read_text()).get("disableAllHooks"):
+            out("WARNING: ~/.claude/settings.json sets disableAllHooks: the fence would not run. Remove it.")
+            ok = False
+    except (OSError, ValueError):
+        pass
+    for p in home.projects():
+        out(f"project {p.name}: {'ok' if (p.repo / '.git').exists() else 'REPOSITORY MISSING'} {p.repo}")
+    return 0 if ok else 1
+
+
+# --- parser ----------------------------------------------------------------------
+
+def parser():
+    ap = argparse.ArgumentParser(prog="operator", description="hearthwork: plan -> execute -> judge, for Claude Code")
+    ap.add_argument("--version", action="version", version=f"hearthwork {__version__}")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    def with_project(sp):
+        sp.add_argument("--project", "-p", help="the project (default: the one holding the current directory)")
+        return sp
+
+    sub.add_parser("init", help="create the home").set_defaults(fn=cmd_init)
+
+    pj = sub.add_parser("project", help="add or list projects").add_subparsers(dest="sub", required=True)
+    sp = pj.add_parser("add", help="register a git checkout")
+    sp.add_argument("name")
+    sp.add_argument("--repo", required=True)
+    sp.add_argument("--trunk")
+    sp.set_defaults(fn=cmd_project_add)
+    pj.add_parser("list").set_defaults(fn=cmd_project_list)
+
+    tk = sub.add_parser("ticket", help="add, list or switch tickets").add_subparsers(dest="sub", required=True)
+    sp = with_project(tk.add_parser("new", help="add a ticket"))
+    sp.add_argument("id")
+    sp.add_argument("--title")
+    sp.add_argument("--file")
+    sp.add_argument("--text")
+    sp.add_argument("--use", action="store_true", help="make it the active ticket")
+    sp.set_defaults(fn=cmd_ticket_new)
+    with_project(tk.add_parser("list")).set_defaults(fn=cmd_ticket_list)
+    sp = with_project(tk.add_parser("use", help="make a ticket active"))
+    sp.add_argument("id")
+    sp.set_defaults(fn=cmd_ticket_use)
+
+    sp = with_project(sub.add_parser("run", help="run units on the active ticket"))
+    sp.add_argument("--units", "-n", type=int, default=1, help="stop after this many units (default 1; 0 = until it stops)")
+    sp.add_argument("--max-cost", type=float, help="stop once this many dollars are spent")
+    sp.set_defaults(fn=cmd_run)
+
+    sp = with_project(sub.add_parser("status", help="where the work stands"))
+    sp.set_defaults(fn=cmd_status)
+    sp = with_project(sub.add_parser("halt", help="stop the loop with a reason"))
+    sp.add_argument("reason")
+    sp.set_defaults(fn=cmd_halt)
+    with_project(sub.add_parser("resume", help="lift a halt")).set_defaults(fn=cmd_resume)
+    sp = with_project(sub.add_parser("rule", help="answer a halt; the operator reads it on the next unit"))
+    sp.add_argument("text")
+    sp.set_defaults(fn=cmd_rule)
+
+    sub.add_parser("log", help="rebuild the work log page and print its path").set_defaults(fn=cmd_log)
+    sp = sub.add_parser("chat", help="talk to the spirit")
+    sp.add_argument("--model")
+    sp.set_defaults(fn=cmd_chat)
+    sub.add_parser("doctor", help="check the setup").set_defaults(fn=cmd_doctor)
+    sub.add_parser("upgrade", help="refresh every project's operator doctrine from this version").set_defaults(fn=cmd_upgrade)
+    return ap
+
+
+def main(argv=None):
+    args = parser().parse_args(argv)
+    try:
+        return args.fn(args) or 0
+    except home.HomeError as e:
+        return fail(str(e))
+    except KeyboardInterrupt:
+        return 130
