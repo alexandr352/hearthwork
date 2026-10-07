@@ -12,9 +12,9 @@ it learned. A ticket moves unit by unit until the operator judges it ready, or s
 ask you a question.
 
 ```
-            ┌─────────── operator (plans, judges, remembers) ───────────┐
+            ┌───────────── operator (plans, judges, remembers) ──────────────┐
 ticket ──►  │ PLAN: one bounded prompt   JUDGE: report + git facts → verdict │ ──► ready
-            └──────────────┬──────────────────────────▲──────────────────┘
+            └──────────────┬──────────────────────────▲──────────────────────┘
                            ▼                          │
                 executor in your checkout ──► report ─┘   (fenced, cold, 45 min)
 ```
