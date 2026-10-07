@@ -167,7 +167,8 @@ def render(home_path=None, ui=False):
         .replace("{{SECTIONS}}", "".join(sections) or "<p class=empty>No projects yet.</p>") \
         .replace("{{UPDATED}}", time.strftime("%Y-%m-%d %H:%M", time.localtime())) \
         .replace("{{REFRESH}}", "" if ui else '<meta http-equiv=refresh content=60>') \
-        .replace("{{NOTE}}", "live" if ui else "refreshes every minute")
+        .replace("{{NOTE}}", "live" if ui else "refreshes every minute") \
+        .replace("{{TOPBTN}}", '<button id=wake class=theme title="keep this screen on while the page is in front" hidden>screen on</button>' if ui else "")
     return page
 
 
@@ -216,11 +217,12 @@ h3{margin:0;font-size:16px}
 .file{margin:6px 0}.file summary{cursor:pointer;font-size:13px;color:var(--accent)}
 pre{white-space:pre-wrap;word-break:break-word;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;font:12.5px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;max-height:520px;overflow:auto}
 code{font:13px ui-monospace,Menlo,monospace}.empty{color:var(--mute)}
-button.theme{background:none;border:1px solid var(--line);color:var(--mute);border-radius:8px;padding:4px 10px;cursor:pointer}
+.tools{display:flex;gap:8px}
+button.theme{background:none;border:1px solid var(--line);color:var(--mute);border-radius:8px;padding:4px 10px;cursor:pointer;font:13px system-ui,sans-serif}
 </style></head>
 <body><main id=log>
 <div class=top><h1>Hearthwork <small>updated {{UPDATED}} · {{NOTE}}</small></h1>
-<button class=theme onclick="var r=document.documentElement,d=r.dataset.theme==='dark'||(!r.dataset.theme&&matchMedia('(prefers-color-scheme: dark)').matches);r.dataset.theme=d?'light':'dark';try{localStorage.setItem('hw-theme',r.dataset.theme)}catch(e){}">theme</button></div>
+<span class=tools>{{TOPBTN}}<button class=theme onclick="var r=document.documentElement,d=r.dataset.theme==='dark'||(!r.dataset.theme&&matchMedia('(prefers-color-scheme: dark)').matches);r.dataset.theme=d?'light':'dark';try{localStorage.setItem('hw-theme',r.dataset.theme)}catch(e){}">theme</button></span></div>
 {{BANNERS}}
 {{STATS}}
 {{SECTIONS}}

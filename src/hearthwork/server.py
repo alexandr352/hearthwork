@@ -257,12 +257,12 @@ def serve(port=0, open_browser=True):
 
 CHAT_UI = r"""
 <aside id=chat>
-  <header><b>Spirit</b><span id=chat-cost></span><button id=wake title="keep this screen on while the page is in front">screen on</button><button id=chat-new title="start a new conversation">new</button><button id=chat-min title="hide">–</button></header>
+  <header><b>Spirit</b><span id=chat-cost></span><button id=chat-new title="start a new conversation">new</button><button id=chat-min title="hide">–</button></header>
   <div id=chat-log><div class="msg sys">Ask about any ticket or unit, a halt, what something cost, or what to do next. The spirit reads the records and acts only through <code>operator</code> commands.</div></div>
   <div id=chat-about hidden><span></span><button title="clear">×</button></div>
-  <form id=chat-form><textarea id=chat-in rows=2 placeholder="Ask the spirit…"></textarea><button>send</button></form>
+  <form id=chat-form><textarea id=chat-in rows=1 placeholder="Ask the spirit…"></textarea><button class=pill>Send</button></form>
 </aside>
-<button id=chat-open hidden>Spirit</button>
+<button id=chat-open class=pill hidden>Spirit</button>
 <style>
 body{padding-right:400px}@media(max-width:900px){body{padding-right:0}}
 #chat{position:fixed;top:0;right:0;width:400px;height:100vh;background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;z-index:5}
@@ -278,11 +278,13 @@ body{padding-right:400px}@media(max-width:900px){body{padding-right:0}}
 .meta-line{font-size:11px;color:var(--mute)}
 #chat-about{display:flex;align-items:center;gap:8px;margin:0 14px;padding:6px 10px;border:1px dashed var(--accent);border-radius:8px;font-size:12px;color:var(--accent)}
 #chat-about span{flex:1}
-#chat-form{display:flex;gap:8px;padding:12px 14px;border-top:1px solid var(--line)}
-#chat-in{flex:1;resize:none;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px;font:14px system-ui,sans-serif}
-#chat-form button{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:0 14px;cursor:pointer}
-#chat-form button:disabled{opacity:.5;cursor:wait}
-#chat-open{position:fixed;right:16px;bottom:16px;background:var(--accent);color:#fff;border:0;border-radius:99px;padding:10px 18px;cursor:pointer;z-index:5}
+#chat-about[hidden],.pill[hidden],button[hidden]{display:none}
+#chat-form{display:flex;align-items:center;gap:8px;padding:12px 16px 16px 14px;border-top:1px solid var(--line)}
+#chat-in{flex:1;height:40px;resize:none;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:20px;padding:9px 16px;font:14px/20px system-ui,sans-serif;overflow-y:auto}
+#chat-in:focus{outline:none;border-color:var(--accent)}
+.pill{height:40px;min-width:80px;padding:0 18px;border:0;border-radius:20px;background:var(--accent);color:#fff;font:600 14px/40px system-ui,sans-serif;cursor:pointer;box-sizing:border-box}
+.pill:disabled{opacity:.5;cursor:wait}
+#chat-open{position:fixed;right:16px;bottom:16px;z-index:5}
 button.ask{background:none;border:1px solid var(--accent);color:var(--accent);border-radius:6px;padding:2px 8px;margin:6px 0;cursor:pointer;font-size:12px}
 body.chat-hidden{padding-right:0}body.chat-hidden #chat{display:none}
 </style>
@@ -315,7 +317,7 @@ form.onsubmit=async function(e){e.preventDefault();var text=input.value.trim();i
     if(!got&&out.textContent==='…')out.remove();
   }catch(err){add('msg err',String(err))}finally{btn.disabled=false;input.focus()}};
 var wl=null,wantWake=false,wb=document.getElementById('wake');
-if(!('wakeLock' in navigator))wb.hidden=true;
+wb.hidden=!('wakeLock' in navigator);
 async function takeWake(){try{wl=await navigator.wakeLock.request('screen');wl.addEventListener('release',function(){wl=null;paintWake()})}catch(e){wl=null}paintWake()}
 function paintWake(){wb.textContent=wl?'screen on ✓':'screen on';wb.style.color=wl?'var(--green)':''}
 wb.onclick=async function(){wantWake=!wantWake;if(wantWake)await takeWake();else if(wl){await wl.release();wl=null;paintWake()}};
