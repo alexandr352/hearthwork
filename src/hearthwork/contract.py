@@ -8,6 +8,7 @@ BUDGETS = {"LOW": (2, 150), "MEDIUM": (5, 300), "HIGH": (10, 600)}
 FINDINGS_MARK = "| Finding:"
 SCOPE_MARK = "SCOPE CONSTRAINT:"
 PROMPT_MAX = 24000
+MODES = ("STABILIZATION", "FEATURE", "REFACTOR", "CONFIGURATION", "MIGRATION", "AUDIT")
 
 
 def check_plan(plan, unit, open_chain=None):
@@ -60,7 +61,19 @@ def check_plan(plan, unit, open_chain=None):
             dev.append("an execution prompt names INVARIANTS:")
         if SCOPE_MARK in prompt:
             dev.append("an execution prompt carries no SCOPE CONSTRAINT")
+    mode = plan.get("mode")
+    if mode is not None and mode not in MODES:
+        dev.append(f'"mode" is one of {", ".join(MODES)}')
+    role = plan.get("role")
+    if role is not None and not (isinstance(role, str) and 0 < len(role) <= 24 and role == role.lower()):
+        dev.append('"role" is one short lowercase word for this step (e.g. reproduce, fix, guard)')
+    steps = plan.get("chain_steps")
     chain = plan.get("chain")
+    if steps is not None:
+        if not (isinstance(steps, list) and all(isinstance(x, str) and 0 < len(x) <= 24 for x in steps)):
+            dev.append('"chain_steps" is a list of short step names, one per phase')
+        elif chain and isinstance(plan.get("chain_total"), int) and len(steps) != plan["chain_total"]:
+            dev.append(f'"chain_steps" names {len(steps)} steps but "chain_total" is {plan["chain_total"]}')
     if chain:
         phase, total = plan.get("chain_phase"), plan.get("chain_total")
         if not (isinstance(phase, int) and isinstance(total, int) and 1 <= phase <= total and total >= 2):
@@ -96,6 +109,9 @@ def check_verdict(verdict):
     for k in ("next", "reason"):
         if not str(verdict.get(k) or "").strip():
             dev.append(f'"{k}" is missing')
+    summary = verdict.get("summary")
+    if summary is not None and not (isinstance(summary, str) and 0 < len(summary) <= 400):
+        dev.append('"summary" is one plain sentence of at most 400 characters')
     return dev
 
 

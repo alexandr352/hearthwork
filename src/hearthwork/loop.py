@@ -258,7 +258,7 @@ class Loop:
             return Outcome("failed", f"lease {lease_id} is not the open one ({lease['lease']}, unit {lease['unit']})",
                            t.id, lease["unit"])
         planned = t.read("lease-rec.json") or {}
-        rec.update({k: planned[k] for k in ("ts", "unit", "kind", "title") if k in planned})
+        rec.update({k: planned[k] for k in ("ts", "unit", "kind", "title", "mode", "role") if k in planned})
         rec["phases"] = planned.get("phases") or {}
         rec["phases"]["execute"] = [{"label": "execute", "model": "your session", "seconds":
                                      round(time.time() - lease.get("opened_epoch", time.time()), 1),
@@ -328,6 +328,9 @@ class Loop:
             return None, None, self._halt(t, rec, plan["reason"])
         write_unit_file(t, n, "prompt.md", plan["prompt"])
         rec["kind"], rec["title"] = plan["kind"], plan["title"]
+        for k in ("mode", "role"):
+            if plan.get(k):
+                rec[k] = plan[k]
         if plan.get("chain"):
             t.write("chain.json", {"chain": plan["chain"], "phase": plan["chain_phase"] - 1,
                                    "total": plan["chain_total"], "unit": n})
@@ -387,7 +390,7 @@ class Loop:
             return stop
         write_unit_file(t, n, "verdict.json", json.dumps(verdict, indent=2))
         t.clear("judge-pending.json")
-        rec["verdict"] = {k: verdict.get(k) for k in ("action", "unit_done", "units_done", "units_planned", "next", "reason")}
+        rec["verdict"] = {k: verdict.get(k) for k in ("action", "unit_done", "units_done", "units_planned", "next", "reason", "summary")}
         st = self.p.read_state()
         st["failures"] = 0
         self.p.write_state(st)

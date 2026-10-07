@@ -51,6 +51,15 @@ class Plans(unittest.TestCase):
         self.assertEqual(contract.check_plan(inv(), 1, open_chain="c"), [], "an insert may join an open chain")
 
 
+    def test_labels_for_the_work_log(self):
+        self.assertEqual(contract.check_plan(inv(mode="FEATURE", role="surface"), 1), [])
+        self.assertTrue(contract.check_plan(inv(mode="BUGFIX"), 1))
+        self.assertTrue(contract.check_plan(inv(role="Reproduce the bug carefully please"), 1))
+        ok = exe(chain="c", chain_phase=2, chain_total=2, chain_steps=["reproduce", "fix"])
+        self.assertEqual(contract.check_plan(ok, 2), [])
+        self.assertTrue(contract.check_plan(dict(ok, chain_steps=["reproduce"]), 2))
+
+
 class Verdicts(unittest.TestCase):
     def test_verdict(self):
         good = {"action": "continue", "unit_done": True, "units_done": 1, "units_planned": 3,

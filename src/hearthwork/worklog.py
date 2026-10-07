@@ -67,6 +67,114 @@ def phase_line(rec):
     return "".join(parts)
 
 
+MODES = {
+    "STABILIZATION": "fixing something broken: reproduce it, fix it the smallest safe way, guard it with a test",
+    "FEATURE": "adding behaviour the product does not have: find where it goes, build it, cover it with tests",
+    "REFACTOR": "changing structure while behaviour stays exactly the same",
+    "CONFIGURATION": "changing configuration only, no code",
+    "MIGRATION": "moving from one state to another in safe, reversible steps",
+    "AUDIT": "answering a question: reading only, nothing is changed",
+}
+KIND_WORD = {"investigation": "reads only", "execution": "changes code", "commit": "makes the commit",
+             "question": "asked you a question"}
+
+
+def unit_plan(p, rec):
+    try:
+        return json.loads((Ticket(p, rec["ticket"]).unit_dir(rec.get("unit")) / "plan.json").read_text())
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def step_kind(plan):
+    if plan.get("commit_expected"):
+        return "commit"
+    return plan.get("kind") or "investigation"
+
+
+def anchor(p, tid, n):
+    return f"u-{esc(p.name)}-{esc(tid)}-{n}"
+
+
+def story(p, tid, trs, open_chain, active):
+    """The ticket as a person reads it: the kind of work, then each chain's named steps,
+    which read and which change code, and where the work stands."""
+    plans = {r.get("unit"): unit_plan(p, r) for r in trs}
+    mode = next((plans[r.get("unit")].get("mode") for r in reversed(trs) if plans[r.get("unit")].get("mode")), None)
+    blocks, chains = [], {}
+    for r in trs:
+        pl = plans[r.get("unit")]
+        name = pl.get("chain")
+        if name:
+            c = chains.get(name)
+            if c is None:
+                c = chains[name] = {"name": name, "total": pl.get("chain_total") or 1, "steps": None, "at": {}}
+                blocks.append(("chain", c))
+            c["total"] = pl.get("chain_total") or c["total"]
+            if pl.get("chain_steps"):
+                c["steps"] = pl["chain_steps"]
+            c["at"].setdefault(pl.get("chain_phase") or 1, []).append((r, pl))
+        else:
+            blocks.append(("unit", (r, pl)))
+    out = []
+    if mode:
+        out.append(f'<div class=mode><b>{esc(mode)}</b> — {esc(MODES.get(mode, ""))}</div>')
+    singles = []
+
+    def flush():
+        if singles:
+            word = "unit" if len(singles) == 1 else "units"
+            out.append(f'<div class=steps><span class=chainname>{word} on their own</span>' + "".join(singles) + "</div>")
+            singles.clear()
+
+    for kind, b in blocks:
+        if kind == "unit":
+            r, pl = b
+            singles.append(pill(p, tid, r, pl, None))
+            continue
+        flush()
+        pills, current_set = [], False
+        for i in range(1, b["total"] + 1):
+            runs = b["at"].get(i, [])
+            label = (b["steps"][i - 1] if b["steps"] and i - 1 < len(b["steps"]) else
+                     (runs[-1][1].get("role") if runs else None))
+            if runs:
+                r, pl = runs[-1]
+                pills.append(pill(p, tid, r, pl, label, retries=len(runs) - 1))
+            else:
+                state = "pending"
+                if not current_set and active and b["name"] == open_chain:
+                    state, current_set = "current", True
+                k = "commit" if i == b["total"] else "planned"
+                pills.append(f'<span class="step {state} {k}" title="{esc(KIND_WORD.get(k, "planned"))}">'
+                             f'<i>{i}</i> {esc(label or ("commit" if k == "commit" else f"step {i}"))}'
+                             f'{" <em>commit</em>" if k == "commit" and label else ""}</span>')
+        out.append(f'<div class=steps><span class=chainname>chain {esc(b["name"])}</span>'
+                   + '<span class=arrow>→</span>'.join(pills) + "</div>")
+    flush()
+    return "".join(out)
+
+
+def pill(p, tid, r, pl, label, retries=0):
+    v = r.get("verdict") or {}
+    k = step_kind(pl) if pl else (r.get("kind") or "investigation")
+    if r.get("outcome") in ("halted", "failed") or v.get("action") == "halt":
+        state = "failed"
+    elif v.get("unit_done"):
+        state = "done"
+    else:
+        state = "retry"
+    if pl.get("action") == "halt":
+        state, k, label = "failed", "question", "asked you"
+    label = label or pl.get("role") or {"investigation": "look", "execution": "change"}.get(r.get("kind"), "unit")
+    phase = pl.get("chain_phase")
+    num = phase if phase else r.get("unit")
+    extra = f' <small>×{retries + 1}</small>' if retries else ""
+    tip = f"unit {r.get('unit')}: {r.get('title') or ''} ({KIND_WORD.get(k, k)})"
+    return (f'<a class="step {state} {k}" href="#{anchor(p, tid, r.get("unit"))}" title="{esc(tip)}">'
+            f'<i>{num}</i> {esc(label)}{" <em>commit</em>" if k == "commit" else ""}{extra}</a>')
+
+
 def unit_card(p, rec, ui=False):
     t = Ticket(p, rec["ticket"])
     n = rec.get("unit")
@@ -83,11 +191,20 @@ def unit_card(p, rec, ui=False):
     git = rec.get("git") or {}
     gitline = (f"{git.get('commits', 0)} commit(s), {git.get('files', 0)} file(s), tree "
                f"{'clean' if git.get('clean') else 'dirty'}") if git else ""
+    pl = unit_plan(p, rec)
+    role = rec.get("role") or pl.get("role")
+    k = step_kind(pl) if pl else (rec.get("kind") or "investigation")
+    did = v.get("summary") or v.get("reason") or ""
+    title = rec.get("title") or rec.get("outcome") or ""
+    if pl.get("action") == "halt":
+        title, did, role = "stopped to ask you", pl.get("reason") or did, "question"
     return f"""
 <details class="unit {state}" id="u-{esc(p.name)}-{esc(rec['ticket'])}-{n}">
-  <summary><span class=dot></span><b>unit {n}</b> <span class=kind>{esc(rec.get('kind') or '')}</span>
-    <span class=title>{esc(rec.get('title') or rec.get('outcome') or '')}</span>
-    <span class=cost>{money(rec.get('cost_usd') or 0)}</span></summary>
+  <summary><span class=dot></span><b>unit {n}</b>
+    {f'<span class=chip>{esc(role)}</span>' if role else ''}<span class="chip {k}">{esc(KIND_WORD.get(k, k))}</span>
+    <span class=title>{esc(title)}</span>
+    <span class=cost>{money(rec.get('cost_usd') or 0)}</span>
+    {f'<span class=did>{esc(did)}</span>' if did else ''}</summary>
   <div class=body>
     <div class=meta>{when} · {rec.get('seconds', 0) / 60:.1f} min · {esc(gitline)}{' · recovered: ' + esc(rec['recovered']) if rec.get('recovered') else ''}</div>
     <div class=verdict><b>{esc(v.get('action') or rec.get('outcome') or '')}</b> — {esc(v.get('reason') or '')}</div>
@@ -138,15 +255,16 @@ def render(home_path=None, ui=False):
             status = ("ready" if tid in (st.get("ready") or []) else
                       "halted" if (st.get("halted") or {}).get("ticket") == tid else
                       "active" if st.get("active_ticket") == tid else "idle")
-            strip = "".join(
-                f'<a class="cell {unit_state(r)}" href="#u-{esc(p.name)}-{esc(tid)}-{r.get("unit")}" '
-                f'title="unit {r.get("unit")}: {esc(r.get("title") or r.get("outcome"))}"></a>' for r in trs)
+            chain_open = (t.read("chain.json") or {}).get("chain")
+            strip = story(p, tid, trs, chain_open, status in ("active", "halted"))
             progress = f"{done} of {planned} units done" if planned else ""
+            nums = " · ".join(x for x in (progress, f"{len(trs)} run{'s' if len(trs) != 1 else ''}",
+                                         money(sum(r.get('cost_usd') or 0 for r in trs))) if x)
             tickets_html.append(f"""
 <section class=ticket>
   <header><h3>{esc(tid)} <span class="badge {status}">{status}</span></h3>
     <div class=sub>{esc(meta.get('title') or '')}</div>
-    <div class=nums>{progress} · {len(trs)} runs · {money(sum(r.get('cost_usd') or 0 for r in trs))}</div>
+    <div class=nums>{nums}</div>
     <div class=strip>{strip}</div>
     {f'<div class=next>next: {esc(last_v.get("next"))}</div>' if last_v.get('next') and status != 'ready' else ''}
   </header>
@@ -163,7 +281,14 @@ def render(home_path=None, ui=False):
   <div><span>{money(sum(r.get('cost_usd') or 0 for r in week))}</span>7 days · {len(week)} units</div>
   <div><span>{f'{rate * 100:.0f}%' if rate is not None else '–'}</span>prompt cache hits, 7 days</div>
   <div><span>{money(sum(r.get('cost_usd') or 0 for r in all_rows))}</span>all time · {len(all_rows)} units</div>
-</div>"""
+</div>
+<div class=legend>Each ticket is worked in <b>units</b>; work that ends in one commit is a <b>chain</b> of them.
+  <span class="step done investigation"><i>1</i> reads only</span>
+  <span class="step done execution"><i>2</i> changes code</span>
+  <span class="step done commit"><i>3</i> makes the commit <em>commit</em></span>
+  <span class="step current planned"><i>·</i> next</span>
+  <span class="step pending planned"><i>·</i> planned</span>
+  <span class="step failed execution"><i>·</i> stopped</span></div>"""
     page = TEMPLATE.replace("{{BANNERS}}", "".join(banners)).replace("{{STATS}}", stats) \
         .replace("{{SECTIONS}}", "".join(sections) or "<p class=empty>No projects yet.</p>") \
         .replace("{{UPDATED}}", time.strftime("%Y-%m-%d %H:%M", time.localtime())) \
@@ -204,10 +329,28 @@ h3{margin:0;font-size:16px}
 .ticket .sub{color:var(--mute)}.nums{color:var(--mute);font-size:13px;margin-top:2px}
 .badge{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:2px 7px;border-radius:99px;margin-left:6px;vertical-align:2px;border:1px solid var(--line);color:var(--mute)}
 .badge.active{color:var(--accent);border-color:var(--accent)}.badge.ready{color:var(--green);border-color:var(--green)}.badge.halted{color:var(--red);border-color:var(--red)}
-.strip{display:flex;flex-wrap:wrap;gap:4px;margin:10px 0 4px}
+.strip{margin:6px 0 4px}
 .cell{width:18px;height:18px;border-radius:4px;display:block}
 .cell.green,.unit.green .dot{background:var(--green)}.cell.amber,.unit.amber .dot{background:var(--amber)}.cell.red,.unit.red .dot{background:var(--red)}
 .next{font-size:13px;color:var(--mute);margin-top:4px}
+.mode{font-size:13px;margin-top:8px}.mode b{color:var(--accent);letter-spacing:.03em}
+.steps{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:10px 0 2px}
+.chainname{font-size:12px;color:var(--mute);margin-right:4px}.arrow{color:var(--mute);font-size:12px}
+.step{display:inline-flex;align-items:center;gap:6px;font-size:13px;padding:3px 10px 3px 4px;border-radius:99px;border:1.5px solid var(--line);color:var(--ink);text-decoration:none;white-space:nowrap}
+.step i{font-style:normal;font-size:11px;font-weight:700;width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;border:1.5px solid currentColor}
+.step em{font-style:normal;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:1px 5px;border-radius:4px;background:var(--ink);color:var(--panel)}
+.step small{color:var(--mute)}
+.step.done{border-color:var(--green)}.step.done i{color:var(--green)}
+.step.done.execution i,.step.done.commit i{background:var(--green);color:#fff;border-color:var(--green)}
+.step.retry{border-color:var(--amber)}.step.retry i{color:var(--amber)}
+.step.failed{border-color:var(--red)}.step.failed i{color:var(--red)}
+.step.current{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}.step.current i{color:var(--accent)}
+.step.pending{border-style:dashed;color:var(--mute)}
+.legend{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:12px;color:var(--mute);margin:-6px 0 6px}
+.legend .step{font-size:12px}
+.chip{font-size:11px;padding:1px 7px;border-radius:99px;border:1px solid var(--line);color:var(--mute)}
+.chip.execution,.chip.commit{border-color:var(--ink);color:var(--ink)}
+.did{flex-basis:100%;font-size:13px;color:var(--mute);padding-left:18px}
 .unit{border-top:1px solid var(--line);padding:8px 0}
 .unit>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .unit>summary::-webkit-details-marker{display:none}

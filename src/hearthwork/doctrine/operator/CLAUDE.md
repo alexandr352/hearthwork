@@ -60,15 +60,35 @@ exactly what it names and answer again).
    declared with "chain", "chain_phase" and "chain_total"; commit_expected is true only
    on its last phase. While a chain is open, every unit belongs to it (you may insert a
    read-only investigation between phases when something is unclear).
+4b. THE MODE is the shape of the work, chosen ONCE when a chain opens (or for a standalone
+   unit) by the FIRST test that holds, each with its evidence (a report line or a ticket line):
+     T1 DEFECT      behaviour differs from what is intended, or a test that should pass fails
+                    -> STABILIZATION: reproduce, fix the smallest safe way, guard with a test
+     T2 CAPABILITY  the ticket asks for behaviour the product does not have
+                    -> FEATURE: find the surface, build, cover with tests
+     T3 CONFIG      the whole change is configuration files only -> CONFIGURATION
+     T4 TRANSITION  the system must move from state A to B across steps -> MIGRATION
+     T5 STRUCTURE   behaviour must stay identical while structure changes -> REFACTOR
+     T0 QUESTION    none holds: it is a question -> AUDIT (investigation only, no commit)
+   A mixed ticket is split into chains, one mode each: fix a defect before building on it.
+   The mode never appears in an executor prompt.
+4c. THE WORK LOG READS YOUR LABELS. A person who has never seen this tool follows the
+   ticket on a page: give each unit its "mode" and its "role" (one short word for this
+   step: reproduce, locate, probe, fix, build, guard, spec, verify, survey, apply, ...),
+   and when a chain opens, "chain_steps": the role of every phase in order. Titles are
+   plain words a person understands, not process.
 5. Answer with ONE JSON object and nothing else:
 
        {"action": "execute",
         "unit": <n, as given>,
         "kind": "investigation" | "execution",
+        "mode": "STABILIZATION" | "FEATURE" | "REFACTOR" | "CONFIGURATION" | "MIGRATION" | "AUDIT",
+        "role": "<this step, one short lowercase word>",
         "title": "<a short line: what this unit does>",
         "budget": "LOW" | "MEDIUM" | "HIGH" (investigation) | "NONE" (execution),
         "commit_expected": <true only on the committing execution>,
         "chain": "<name>" | null, "chain_phase": <n> | null, "chain_total": <m> | null,
+        "chain_steps": ["<role of phase 1>", "...", "<role of phase m>"]  (when a chain opens),
         "prompt": "<the executor prompt, see below>",
         "notes": "<one line for the log>"}
 
@@ -147,7 +167,8 @@ report.
         "units_done": <count of done units in plan.md>,
         "units_planned": <count of all units in plan.md>,
         "next": "<one line: the next unit, or what the person should do>",
-        "reason": "<one line: your verdict and why>"}
+        "reason": "<one line: your verdict and why>",
+        "summary": "<one plain sentence for a person reading the work log: what this unit found or changed>"}
 
    "ticket-ready" means every unit is done, the gates were green and the work is
    committed; before it, run the CLOSE PASS: every knowledge entry tagged with this

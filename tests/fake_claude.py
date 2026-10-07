@@ -42,11 +42,13 @@ if prompt.startswith("PHASE: PLAN") or prompt.startswith("DEVIATION") and "PLAN"
     (state / "last-unit").write_text(str(n))
     if n == 1:
         plan = {"action": "execute", "unit": 1, "kind": "investigation", "title": "find the total function",
+                "mode": "STABILIZATION", "role": "reproduce", "chain_steps": ["reproduce", "fix"],
                 "budget": "LOW", "commit_expected": False, "chain": "total", "chain_phase": 1, "chain_total": 2,
                 "prompt": "SCOPE CONSTRAINT: Read at most 2 files. Read at most 150 lines per file. Do not exceed these limits regardless of what you find. If the question cannot be answered within these limits, stop and report what you found and what remains unread.\nQUESTIONS: where is total computed?\nRETURN FORMAT: [N] File: <path> | Line: <line> | Finding: <fact> | Confidence: <high>",
                 "notes": "first look"}
     else:
         plan = {"action": "execute", "unit": n, "kind": "execution", "title": "fix the total and commit",
+                "mode": "STABILIZATION", "role": "fix",
                 "budget": "NONE", "commit_expected": True, "chain": "total", "chain_phase": 2, "chain_total": 2,
                 "prompt": "The total now includes tax.\nTARGET FILES: total.txt\nINVARIANTS: nothing else changes\nCOMMIT: yes, on branch T-1-total",
                 "notes": "the fix"}
@@ -55,7 +57,8 @@ if prompt.startswith("PHASE: JUDGE"):
     n = int(re.search(r"UNIT: (\d+)", prompt).group(1))
     action = "ticket-ready" if n >= 2 else "continue"
     envelope(json.dumps({"action": action, "unit_done": True, "units_done": n, "units_planned": 2,
-                         "next": "unit 2: the fix" if n < 2 else "review and merge", "reason": f"unit {n} did what it said"}))
+                         "next": "unit 2: the fix" if n < 2 else "review and merge", "reason": f"unit {n} did what it said",
+                         "summary": "Found where the total is computed." if n < 2 else "Totals now include tax."}))
 if prompt.startswith("ATLAS BUILD") or prompt.startswith("DEVIATION: return the atlas"):
     if flag("atlas-bad-once"):
         envelope("I looked around; it is a small Python project.")
