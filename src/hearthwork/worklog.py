@@ -96,11 +96,19 @@ def anchor(p, tid, n):
     return f"u-{esc(p.name)}-{esc(tid)}-{n}"
 
 
+def ticket_mode(p, trs):
+    """The kind of work, from the newest unit that names it."""
+    for r in reversed(trs):
+        m = unit_plan(p, r).get("mode")
+        if m:
+            return m
+    return None
+
+
 def story(p, tid, trs, open_chain, active):
     """The ticket as a person reads it: the kind of work, then each chain's named steps,
     which read and which change code, and where the work stands."""
     plans = {r.get("unit"): unit_plan(p, r) for r in trs}
-    mode = next((plans[r.get("unit")].get("mode") for r in reversed(trs) if plans[r.get("unit")].get("mode")), None)
     blocks, chains = [], {}
     for r in trs:
         pl = plans[r.get("unit")]
@@ -117,8 +125,6 @@ def story(p, tid, trs, open_chain, active):
         else:
             blocks.append(("unit", (r, pl)))
     out = []
-    if mode:
-        out.append(f'<div class=mode><b>{esc(mode)}</b> — {esc(MODES.get(mode, ""))}</div>')
     singles = []
 
     def flush():
@@ -255,6 +261,7 @@ def render(home_path=None, ui=False):
             status = ("ready" if tid in (st.get("ready") or []) else
                       "halted" if (st.get("halted") or {}).get("ticket") == tid else
                       "active" if st.get("active_ticket") == tid else "idle")
+            mode = ticket_mode(p, trs)
             chain_open = (t.read("chain.json") or {}).get("chain")
             strip = story(p, tid, trs, chain_open, status in ("active", "halted"))
             progress = f"{done} of {planned} units done" if planned else ""
@@ -262,7 +269,7 @@ def render(home_path=None, ui=False):
                                          money(sum(r.get('cost_usd') or 0 for r in trs))) if x)
             tickets_html.append(f"""
 <section class=ticket>
-  <header><h3>{esc(tid)} <span class="badge {status}">{status}</span></h3>
+  <header><h3>{esc(tid)}{f' <span class=mode tabindex=0 aria-label="{esc(mode)}: {esc(MODES.get(mode, ""))}" data-tip="{esc(MODES.get(mode, ""))}">{esc(mode)}</span>' if mode else ''} <span class="badge {status}">{status}</span></h3>
     <div class=sub>{esc(meta.get('title') or '')}</div>
     <div class=nums>{nums}</div>
     <div class=strip>{strip}</div>
@@ -333,7 +340,8 @@ h3{margin:0;font-size:16px}
 .cell{width:18px;height:18px;border-radius:4px;display:block}
 .cell.green,.unit.green .dot{background:var(--green)}.cell.amber,.unit.amber .dot{background:var(--amber)}.cell.red,.unit.red .dot{background:var(--red)}
 .next{font-size:13px;color:var(--mute);margin-top:4px}
-.mode{font-size:13px;margin-top:8px}.mode b{color:var(--accent);letter-spacing:.03em}
+h3 .mode{color:var(--accent);letter-spacing:.04em;margin-left:6px;cursor:help;border-bottom:1px dotted currentColor;position:relative}
+h3 .mode:hover::after,h3 .mode:focus::after{content:attr(data-tip);position:absolute;left:0;top:calc(100% + 6px);z-index:3;width:max-content;max-width:min(360px,80vw);white-space:normal;font:400 12.5px/1.45 system-ui,sans-serif;letter-spacing:0;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 10px;box-shadow:0 6px 18px rgba(0,0,0,.12)}
 .steps{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:10px 0 2px}
 .chainname{font-size:12px;color:var(--mute);margin-right:4px}.arrow{color:var(--mute);font-size:12px}
 .step{display:inline-flex;align-items:center;gap:6px;font-size:13px;padding:3px 10px 3px 4px;border-radius:99px;border:1.5px solid var(--line);color:var(--ink);text-decoration:none;white-space:nowrap}
