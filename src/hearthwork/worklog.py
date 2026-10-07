@@ -377,7 +377,7 @@ def render(home_path=None, ui=False):
                 stats=stats, ui=ui)
 
 
-NAV = (("log", "Log", "worklog.html"), ("tickets", "Tickets", "archive/index.html"), ("stats", "Stats", "stats.html"))
+NAV = (("log", "Log", "worklog.html"), ("archive", "Archive", "archive/index.html"), ("stats", "Stats", "stats.html"))
 
 
 def page(sections, banners="", stats="", ui=False, title="Hearthwork Log", note=None, root="", nav="log", crumb=""):
@@ -419,7 +419,7 @@ def archive(h):
             if stamps.get(key) != sig or not target.exists():
                 body = ticket_section(p, tid, trs, st, files="link", base="../../")
                 home.write_atomic(target, page(body, title=f"{tid} · Hearthwork", note=p.name, root="../../",
-                                               nav="tickets", crumb=esc(tid)))
+                                               nav="archive", crumb=esc(tid)))
                 stamps[key] = sig
             first = min(ts(r) for r in trs)
             index.append((first, p, tid, trs, st, meta, status))
@@ -436,8 +436,8 @@ def archive(h):
             + "".join(rows) +
             "<script>var f=document.getElementById('filter');f.oninput=function(){var q=f.value.toLowerCase();"
             "document.querySelectorAll('a.row').forEach(function(a){a.hidden=q&&a.dataset.q.indexOf(q)<0})}</script>")
-    home.write_atomic(root / "index.html", page(body, title="Tickets · Hearthwork", note=f"{len(index)} tickets", root="../",
-                                                nav="tickets"))
+    home.write_atomic(root / "index.html", page(body, title="Archive · Hearthwork", note=f"{len(index)} tickets", root="../",
+                                                nav="archive"))
     home.write_atomic(stamps_path, json.dumps(stamps))
     return root / "index.html"
 

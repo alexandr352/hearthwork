@@ -101,8 +101,9 @@ def share_rows(items, total, cols):
     for key, vals in items:
         share = (vals[-1] / total) if total else 0
         cells = "".join(f"<td class=num>{esc(v)}</td>" for v in cols(vals))
-        out.append(f"<tr><th>{esc(key)}</th>{cells}<td class=sharecell><span class=share style='width:{share * 100:.1f}%'></span>"
-                   f"<span class=sharepct>{share * 100:.0f}%</span></td></tr>")
+        out.append(f"<tr><th>{esc(key)}</th>{cells}<td class=sharecell><div class=sharerow><span class=share "
+                   f"style='width:calc((100% - 48px) * {share:.4f})'></span><span class=sharepct>{share * 100:.0f}%</span>"
+                   f"</div></td></tr>")
     return "".join(out)
 
 
@@ -179,9 +180,10 @@ def build(h=None):
     phase_items = sorted(phases.items(), key=lambda kv: order.index(kv[0]) if kv[0] in order else 9)
     phase_table = ("<table class=data><thead><tr><th>phase</th><th>calls</th><th>cost</th><th>share of cost</th></tr></thead><tbody>"
                    + share_rows(phase_items, cost, lambda v: (v[0], money(v[1]))) + "</tbody></table>")
-    model_items = sorted(models.items(), key=lambda kv: -kv[1][2])
+    model_items = sorted(models.items(), key=lambda kv: (kv[0] == "your session", -kv[1][2]))
     model_table = ("<table class=data><thead><tr><th>model</th><th>calls</th><th>input tokens</th><th>cost</th><th>share of cost</th></tr></thead><tbody>"
-                   + share_rows(model_items, cost, lambda v: (v[0], f"{v[1]:,}", money(v[2]))) + "</tbody></table>")
+                   + share_rows(model_items, cost, lambda v: (v[0], f"{v[1]:,}" if v[1] else "–", money(v[2]) if v[1] else "not metered"))
+                   + "</tbody></table>")
 
     # by kind of work, per ticket
     per_ticket = defaultdict(list)
@@ -252,8 +254,10 @@ table.data thead th{font-size:12px;color:var(--mute);font-weight:600}
 table.data tbody th small{display:block;color:var(--mute);font-weight:400;font-size:11.5px}
 td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
 .up{color:var(--red);font-size:11.5px}.down{color:var(--green);font-size:11.5px}
-.sharecell{min-width:140px;position:relative}.share{display:inline-block;height:8px;border-radius:0 4px 4px 0;background:var(--bar);vertical-align:middle}
-.sharepct{font-size:12px;color:var(--mute);margin-left:6px;font-variant-numeric:tabular-nums}
+.sharecell{min-width:150px;white-space:nowrap}
+.sharerow{display:flex;align-items:center;gap:6px}
+.share{flex:none;height:8px;min-width:2px;border-radius:0 4px 4px 0;background:var(--bar)}
+.sharepct{flex:none;font-size:12px;color:var(--mute);font-variant-numeric:tabular-nums}
 .hint{font-size:12.5px;color:var(--mute);margin:-8px 0 10px}
 #tip{position:fixed;pointer-events:none;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12.5px;box-shadow:0 6px 18px rgba(0,0,0,.15);z-index:9;display:none}
 @media(max-width:640px){table.data{display:block;overflow-x:auto}}
