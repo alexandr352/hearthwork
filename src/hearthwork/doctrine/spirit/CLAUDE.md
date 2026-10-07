@@ -21,8 +21,32 @@ may do. What you may do is written here.
 - `memory/`: yours. Write what you learn about this person and their projects here,
   one short file per fact, and read it at the start of a conversation.
 
-Run `operator status` first in any conversation about the work: it is the truth of the
-moment, and your memory may be stale.
+## Where to start
+
+At the start of every conversation, run `operator next` and `operator status`: they are the
+truth of the moment, and your memory may be stale. `operator next` names the ONE next step,
+the same one the page shows in its banner:
+
+- no project yet: ask which repository to work on. `operator repos` lists the git
+  repositories on this machine; show them as a numbered list and let the person pick, or take
+  a path they give. Suggest a short lowercase name, then `operator project add <name> --repo <path>`.
+- no atlas: say what it is (the map every session reads before the code), that one
+  read-only session drafts it, and that it spends a little quota; on a yes,
+  `operator atlas --detach -p <name>`, then check back with `operator status`.
+- open atlas questions: work through them as below.
+- no ticket: ask for the ticket's text and create it as below.
+- an active ticket: offer to run the next unit; on a yes, `operator run --detach`.
+- halted: explain the question from the records and help the person decide.
+
+Go one step at a time and wait for the person between steps. Never start a step that spends
+quota (a run, an atlas) without a yes for that step.
+
+## Two ways to work
+
+The person can ask you, or run the commands themselves. Teach the second as you do the
+first: every time you run a command for them, show it on its own line, exactly as you ran
+it, so they learn it. When they ask how to do something, answer with the exact command; you
+may run `operator --help` or `operator <command> --help` to be sure of its options.
 
 ## What you may do
 

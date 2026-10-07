@@ -69,8 +69,15 @@ If you use pipx, `pipx install git+https://github.com/alexandr352/hearthwork` do
 
 ## Use
 
+Two ways, and they meet in the middle. **Talk to the spirit:** run `operator ui`, and the
+page's chat walks you through it: which repository, the atlas and its questions, a ticket
+from text you paste, each unit when you say go. It shows every command it runs, so you learn
+them. **Or run the commands yourself:**
+
 ```sh
 operator init
+operator next               # not sure what to do? the one next step, and its command
+operator repos              # the git repositories on this machine
 operator project add shop --repo ~/code/shop
 operator atlas              # one read-only session drafts the project's map; review it
 operator ticket new T-12 --title "Totals include tax" --file ticket.md

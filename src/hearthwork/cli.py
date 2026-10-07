@@ -300,6 +300,17 @@ def cmd_chat(args):
 def cmd_atlas(args):
     from . import atlas
     p = project_of(args)
+    if args.detach and args.action == "draft":
+        logs = home.home_dir() / "runs"
+        logs.mkdir(parents=True, exist_ok=True)
+        log = logs / f"{now_iso().replace(':', '')}-{p.name}-atlas.log"
+        cmd = [sys.executable, "-m", "hearthwork", "atlas", "-p", p.name] + (["--force"] if args.force else [])
+        with open(log, "ab") as f:
+            proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=f, stderr=subprocess.STDOUT,
+                                    start_new_session=True, env=dict(os.environ, HEARTHWORK_HOME=str(home.home_dir())))
+        out(f"drafting the atlas in the background (pid {proc.pid}); its output: {log}")
+        out("when it is done, operator status shows it, and operator atlas questions lists what it asks you")
+        return 0
     if args.action == "questions":
         qs = atlas.question_list(p)
         if not qs:
@@ -362,6 +373,31 @@ def cmd_economy(args):
         for p in home.projects():
             out(f"  {p.name}: mcp_allow = {p.mcp_allow or '[] (nothing may be called yet)'}")
     out("  fixed: each role's own tools, no background tasks, the fence")
+    return 0
+
+
+def cmd_next(args):
+    from . import guide
+    s = guide.next_step(getattr(args, "project", None))
+    out(f"next: {s['title']}")
+    out(f"  why: {s['why']}")
+    out(f"  do it:  {s['command']}")
+    out(f"  or ask the spirit (operator chat, or the chat in operator ui): \"{s['ask']}\"")
+    return 0
+
+
+def cmd_repos(args):
+    from . import guide
+    found = guide.find_repos()
+    known = {str(p.repo.resolve()) for p in home.projects()}
+    if not found:
+        out("no git repositories found under your home's usual folders; give the path yourself:")
+        out("  operator project add <name> --repo <path>")
+        return 0
+    for path, branch in found:
+        mark = "  (already a project)" if str(Path(path).resolve()) in known else ""
+        out(f"{path}  [{branch}]{mark}")
+    out("\nadd one:  operator project add <name> --repo <path>")
     return 0
 
 
@@ -491,6 +527,8 @@ def parser():
     sp = sub.add_parser("chat", help="talk to the spirit")
     sp.add_argument("--model")
     sp.set_defaults(fn=cmd_chat)
+    with_project(sub.add_parser("next", help="the one next step, and how to do it")).set_defaults(fn=cmd_next)
+    sub.add_parser("repos", help="the git repositories found on this machine").set_defaults(fn=cmd_repos)
     sp = sub.add_parser("economy", help="show or switch what Claude calls carry: MCP servers, your CLAUDE.md, the cache policy")
     sp.add_argument("--mcp", choices=["on", "off"])
     sp.add_argument("--claude-md", dest="claude_md", choices=["on", "off"])
@@ -505,6 +543,7 @@ def parser():
     sp.add_argument("action", nargs="?", default="draft", choices=["draft", "questions", "answer"])
     sp.add_argument("rest", nargs="*", help="for answer: the question number, then the answer")
     sp.add_argument("--force", action="store_true", help="draft again over an edited atlas (the old one is kept)")
+    sp.add_argument("--detach", action="store_true", help="draft in the background and return at once")
     sp.set_defaults(fn=cmd_atlas)
     sp = with_project(sub.add_parser("mcp", help="serve hearthwork to your Claude Code session (claude mcp add hearthwork -- operator mcp)"))
     sp.set_defaults(fn=cmd_mcp)
