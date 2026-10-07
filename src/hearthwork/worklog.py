@@ -361,7 +361,7 @@ def render(home_path=None, ui=False):
             older_html = (f'<div class=older><h4>Earlier tickets</h4>{"".join(head)}'
                           + (f'<details><summary>{len(tail)} more</summary>{"".join(tail)}</details>' if tail else "")
                           + "</div>")
-        link = f'<a class=archlink href="archive/index.html">all tickets →</a>' if groups else ""
+        link = ""
         sections.append(f"""<h2>{esc(p.name)} <span class=repo>{esc(p.repo)}</span>{link}</h2>
 {''.join(full) or '<p class=empty>No units yet. <code>operator run</code> starts one.</p>'}{older_html}""")
     day = [r for r in all_rows if ts(r) >= day_ago]
@@ -377,8 +377,13 @@ def render(home_path=None, ui=False):
                 stats=stats, ui=ui)
 
 
-def page(sections, banners="", stats="", ui=False, title="Hearthwork Log", note=None, root=""):
-    return TEMPLATE.replace("{{BANNERS}}", banners).replace("{{STATS}}", stats) \
+NAV = (("log", "Log", "worklog.html"), ("tickets", "Tickets", "archive/index.html"), ("stats", "Stats", "stats.html"))
+
+
+def page(sections, banners="", stats="", ui=False, title="Hearthwork Log", note=None, root="", nav="log", crumb=""):
+    tabs = "".join(f'<a href="{root}{href}"{" aria-current=page" if key == nav else ""}>{label}</a>'
+                   for key, label, href in NAV) + (f'<span class=crumb>/ {crumb}</span>' if crumb else "")
+    return TEMPLATE.replace("{{NAV}}", tabs).replace("{{BANNERS}}", banners).replace("{{STATS}}", stats) \
         .replace("{{SECTIONS}}", sections) \
         .replace("{{MODES}}", "".join(f"<dt>{esc(m)}</dt><dd>{esc(d)}</dd>" for m, d in MODES.items())) \
         .replace("{{UPDATED}}", time.strftime("%Y-%m-%d %H:%M", time.localtime())) \
@@ -412,9 +417,9 @@ def archive(h):
             key = f"{p.name}/{tid}"
             target = root / p.name / f"{tid}.html"
             if stamps.get(key) != sig or not target.exists():
-                body = (f'<p class=back><a href="../index.html">← all tickets</a> · <a href="../../worklog.html">the log</a></p>'
-                        + ticket_section(p, tid, trs, st, files="link", base="../../"))
-                home.write_atomic(target, page(body, title=f"{tid} · Hearthwork", note=f"archive · {p.name}", root="../../"))
+                body = ticket_section(p, tid, trs, st, files="link", base="../../")
+                home.write_atomic(target, page(body, title=f"{tid} · Hearthwork", note=p.name, root="../../",
+                                               nav="tickets", crumb=esc(tid)))
                 stamps[key] = sig
             first = min(ts(r) for r in trs)
             index.append((first, p, tid, trs, st, meta, status))
@@ -427,12 +432,12 @@ def archive(h):
             month = m
         row = compact_row(p, tid, trs, st, f"{p.name}/{tid}.html")
         rows.append(row.replace('<a class=row ', f'<a class=row data-q="{esc((p.name + " " + tid + " " + (meta.get("title") or "")).lower())}" ', 1))
-    body = ('<p class=back><a href="../worklog.html">← the log</a></p>'
-            '<input id=filter class=filter placeholder="Find a ticket by id or title…" aria-label="find a ticket">'
+    body = ('<input id=filter class=filter placeholder="Find a ticket by id or title…" aria-label="find a ticket">'
             + "".join(rows) +
             "<script>var f=document.getElementById('filter');f.oninput=function(){var q=f.value.toLowerCase();"
             "document.querySelectorAll('a.row').forEach(function(a){a.hidden=q&&a.dataset.q.indexOf(q)<0})}</script>")
-    home.write_atomic(root / "index.html", page(body, title="Archive · Hearthwork", note=f"archive · {len(index)} tickets", root="../"))
+    home.write_atomic(root / "index.html", page(body, title="Tickets · Hearthwork", note=f"{len(index)} tickets", root="../",
+                                                nav="tickets"))
     home.write_atomic(stamps_path, json.dumps(stamps))
     return root / "index.html"
 
@@ -477,7 +482,11 @@ h3{margin:0;font-size:16px}
 .next{font-size:13px;color:var(--mute);margin-top:4px}
 .files{display:flex;flex-direction:column;gap:2px}.filelink{font-size:13px;color:var(--accent);margin-right:12px}
 .more{display:inline-block;margin-top:10px;font-size:13px;color:var(--accent)}
-.archlink{font-size:13px;font-weight:400;color:var(--accent);margin-left:12px}
+.tabs{display:flex;align-items:baseline;gap:4px;margin:14px 0 4px;border-bottom:1px solid var(--line)}
+.tabs a{padding:6px 12px 8px;color:var(--mute);text-decoration:none;font-size:14px;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs a:hover{color:var(--ink)}
+.tabs a[aria-current=page]{color:var(--ink);font-weight:600;border-bottom-color:var(--accent)}
+.tabs .crumb{color:var(--mute);font-size:14px;padding:6px 4px 8px}
 .older{margin:18px 0}.older h4{font-size:13px;color:var(--mute);margin:0 0 6px;font-weight:600}
 a.row{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);text-decoration:none;margin:6px 0}
 a.row:hover{border-color:var(--accent)}a.row[hidden]{display:none}
@@ -527,7 +536,8 @@ button.theme,a.theme{background:none;border:1px solid var(--line);color:var(--mu
 </style></head>
 <body><main id=log>
 <div class=top><h1>Hearthwork <small>updated {{UPDATED}} · {{NOTE}}</small></h1>
-<span class=tools>{{TOPBTN}}<a class=theme href="{{ROOT}}stats.html">stats</a><button class=theme onclick="var r=document.documentElement,d=r.dataset.theme==='dark'||(!r.dataset.theme&&matchMedia('(prefers-color-scheme: dark)').matches);r.dataset.theme=d?'light':'dark';try{localStorage.setItem('hw-theme',r.dataset.theme)}catch(e){}">theme</button><button class=theme onclick="document.getElementById('help').showModal()" aria-label="how to read this page" title="how to read this page">?</button></span></div>
+<span class=tools>{{TOPBTN}}<button class=theme onclick="var r=document.documentElement,d=r.dataset.theme==='dark'||(!r.dataset.theme&&matchMedia('(prefers-color-scheme: dark)').matches);r.dataset.theme=d?'light':'dark';try{localStorage.setItem('hw-theme',r.dataset.theme)}catch(e){}">theme</button><button class=theme onclick="document.getElementById('help').showModal()" aria-label="how to read this page" title="how to read this page">?</button></span></div>
+<nav class=tabs aria-label="pages">{{NAV}}</nav>
 {{BANNERS}}
 {{STATS}}
 <dialog id=help aria-labelledby=help-title>

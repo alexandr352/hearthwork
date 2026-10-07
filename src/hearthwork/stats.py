@@ -126,7 +126,7 @@ def build(h=None):
   <div><span>{money(cost / len(ready)) if ready else '–'}</span>per ready ticket, on average</div>
   <div><span>{pct(sum(first_try(r) for r in rows), len(rows))}</span>units done on the first try</div>
   <div><span>{pct(cr, ctot)}</span>of input tokens read from cache</div>
-  <div><span>{exec_hours:.1f} h</span>of executor work</div>
+  <div><span>{f"{exec_hours:.1f} h" if exec_hours >= 1 else f"{exec_hours * 60:.0f} min"}</span>of executor work</div>
 </div>"""
 
     # week by week
@@ -214,8 +214,7 @@ def build(h=None):
                          "<th>cost</th><th>share of cost</th></tr></thead><tbody>"
                          + share_rows(pitems, cost, lambda v: (v[0], v[1], money(v[2]))) + "</tbody></table>")
 
-    body = f"""<p class=back><a href="worklog.html">← the log</a> · <a href="archive/index.html">all tickets</a></p>
-{tiles}
+    body = f"""{tiles}
 <h3>Week by week</h3>
 {charts}
 {week_table or '<p class=empty>No units yet.</p>'}
@@ -228,7 +227,7 @@ usage limit resumed, a report judged on a later run, or a survey after a crash.<
 <h3>By kind of work</h3>
 {kind_table}
 {project_table}"""
-    page = worklog.page(body, title="Stats · Hearthwork", note="stats").replace("</style>", STYLE + "</style>", 1) \
+    page = worklog.page(body, title="Stats · Hearthwork", note="the whole history", nav="stats").replace("</style>", STYLE + "</style>", 1) \
         .replace("</body>", SCRIPT + "</body>", 1)
     path = h / "stats.html"
     home.write_atomic(path, page)
