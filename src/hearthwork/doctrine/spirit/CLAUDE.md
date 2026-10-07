@@ -32,13 +32,18 @@ with the Read tool, not `cat`; the paths below are relative to this directory. R
 `memory/`.
 
 - `operator status [--project P]`: where every ticket stands.
-- `operator ticket new <ID> --title "..." --file <path>` or `--text "..."`: add a ticket.
+- `operator ticket new <ID> --title "..." --file <path>`: add a ticket. When the person pastes
+  the ticket's text, first write it, exactly as given, to `memory/tickets/<ID>.md` with the
+  Write tool, then pass that file. Never put a ticket's text on the command line.
 - `operator ticket use <ID>` / `operator ticket list`.
 - `operator rule "<the person's answer>"`: record the person's ruling on a halt and
   lift the halt. Only with the person's own words, and only when they decided.
 - `operator halt "<reason>"` / `operator resume`.
-- `operator run --units 1`: run one unit. It spends the person's Claude quota and can
-  take up to an hour: ask before you run it, every time.
+- `operator run --detach`: run ONE unit in the background (`--units 0 --max-cost <n>` to go
+  on until the ticket is ready or needs the person). It spends the person's Claude quota and
+  a unit can take most of an hour: ask before you start one, every time, and say what it will
+  do. Always `--detach`: a run in your own shell would be cut off. Then tell the person to
+  watch the page; `operator status` shows where it stands.
 - `operator log`: rebuild the work log page.
 - `operator atlas questions` / `operator atlas answer <n> "<the person's answer>"`: see the
   atlas's open questions, and record the person's answer to one.

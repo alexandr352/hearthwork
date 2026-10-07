@@ -138,11 +138,30 @@ def cmd_ticket_use(args):
 def cmd_run(args):
     from .loop import Loop
     p = project_of(args)
+    if args.detach:
+        return detach_run(p, args)
     cfg = home.load_config()
     loop = Loop(p, cfg, log=lambda m: out(f"[{now_iso()}] {m}"))
     from .awake import from_config
     with from_config(cfg, why=f"hearthwork is running units on {p.name}"):
         return run_loop(loop, args)
+
+
+def detach_run(p, args):
+    """Start the same run in the background and return at once; its output goes to a log
+    under the home. The page and `operator status` show its progress."""
+    logs = home.home_dir() / "runs"
+    logs.mkdir(parents=True, exist_ok=True)
+    log = logs / f"{now_iso().replace(':', '')}-{p.name}.log"
+    cmd = [sys.executable, "-m", "hearthwork", "run", "-p", p.name, "--units", str(args.units)]
+    if args.max_cost:
+        cmd += ["--max-cost", str(args.max_cost)]
+    with open(log, "ab") as f:
+        proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=f, stderr=subprocess.STDOUT,
+                                start_new_session=True, env=dict(os.environ, HEARTHWORK_HOME=str(home.home_dir())))
+    out(f"started in the background (pid {proc.pid}): {args.units or 'until it stops'} unit(s) on {p.name}")
+    out(f"  progress: the page (operator ui) or operator status; its output: {log}")
+    return 0
 
 
 def run_loop(loop, args):
@@ -455,6 +474,7 @@ def parser():
     sp = with_project(sub.add_parser("run", help="run units on the active ticket"))
     sp.add_argument("--units", "-n", type=int, default=1, help="stop after this many units (default 1; 0 = until it stops)")
     sp.add_argument("--max-cost", type=float, help="stop once this many dollars are spent")
+    sp.add_argument("--detach", action="store_true", help="run in the background and return at once")
     sp.set_defaults(fn=cmd_run)
 
     sp = with_project(sub.add_parser("status", help="where the work stands"))

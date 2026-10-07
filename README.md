@@ -197,9 +197,10 @@ operator chat
 opens Claude Code in the home, as the spirit that lives beside the loop. It knows where
 the records are and how to read them: ask why unit 7 halted, what the ticket has cost,
 what the operator believes about your auth module and where it learned it. It acts only
-through `operator` commands (it will record your ruling on a halt, add a ticket, run a
-unit when you say so), reads anything in the home and your repositories, and writes only
-its own memory. Its voice is `spirit/persona.md`: replace it with whatever you like.
+through `operator` commands: it records your ruling on a halt, works through the atlas
+questions with you, creates a ticket from text you paste, and starts a run in the background
+when you say so (`operator run --detach`; you watch it on the page). It reads anything in the
+home and your repositories, and writes only its own memory. Its voice is `spirit/persona.md`: replace it with whatever you like.
 
 ## The fence
 

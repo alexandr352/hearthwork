@@ -180,6 +180,11 @@ class OperatorAndSpiritFence(unittest.TestCase):
             self.assertEqual(ask(pol, "Bash", {"command": 'operator status && operator ticket list'}, cwd), "deny")
             self.assertEqual(ask(pol, "Bash", {"command": 'operator status 2>&1'}, cwd), "deny")
             self.assertEqual(ask(pol, "Bash", {"command": 'operator status | head'}, cwd), "deny")
+            self.assertEqual(ask(pol, "Bash", {"command": 'operator atlas answer 2 "line one\nline two"'}, cwd), "allow",
+                             "a newline inside quotes is text")
+            self.assertEqual(ask(pol, "Bash", {"command": "operator status\nrm -rf ~"}, cwd), "deny",
+                             "a newline outside quotes is a second command")
+            self.assertEqual(ask(pol, "Bash", {"command": "operator run --detach"}, cwd), "allow")
             self.assertEqual(ask(pol, "Bash", {"command": f"git -C {r} log --oneline -5"}, cwd), "allow")
             self.assertEqual(ask(pol, "Bash", {"command": f"git -C {r} push"}, cwd), "deny")
             self.assertEqual(ask(pol, "Bash", {"command": "cat /etc/passwd"}, cwd), "deny")

@@ -87,6 +87,20 @@ class LoopTest(Fixture):
         self.assertIn("T-1-total: 1 commit(s) ahead", plans[-1])
         self.assertIn("unmerged branches", (self.t.unit_dir(2) / "facts.md").read_text())
 
+    def test_detached_run_returns_at_once_and_finishes(self):
+        import time as _t
+        t0 = _t.time()
+        self.assertEqual(cli.main(["run", "-p", "demo", "--detach"]), 0)
+        self.assertLess(_t.time() - t0, 3, "detach returns at once")
+        for _ in range(100):
+            if read_meter(self.p):
+                break
+            _t.sleep(0.1)
+        rows = read_meter(self.p)
+        self.assertEqual([r["unit"] for r in rows], [1], "the background run did its one unit")
+        logs = list((Path(os.environ["HEARTHWORK_HOME"]) / "runs").glob("*.log"))
+        self.assertEqual(len(logs), 1)
+
     def test_every_cost_is_the_call_not_the_session(self):
         self.run_units(1)
         rows = read_meter(self.p)

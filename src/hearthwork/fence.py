@@ -328,6 +328,24 @@ def check_operator(tool, ti, cwd):
     deny(tool, f"{tool} is not available to the operator")
 
 
+def unquoted_newline(cmd):
+    """True when a newline stands outside quotes, where the shell reads it as a new command."""
+    quote, escape = None, False
+    for ch in cmd:
+        if escape:
+            escape = False
+        elif ch == "\\" and quote != "'":
+            escape = True
+        elif quote:
+            if ch == quote:
+                quote = None
+        elif ch in "'\"":
+            quote = ch
+        elif ch == "\n":
+            return True
+    return False
+
+
 def check_spirit(tool, ti, cwd):
     home = os.path.realpath(POLICY["home"])
     readable = [home] + roots("repos")
@@ -349,8 +367,10 @@ def check_spirit(tool, ti, cwd):
         cmd = ti.get("command", "").strip()
         # Substitution runs even inside double quotes, so it is refused anywhere. Operators
         # (; & | < >) are refused only where the shell would act on them: outside quotes.
-        if "`" in cmd or "$(" in cmd or "\n" in cmd:
-            deny(tool, "one command at a time, no substitutions or newlines", cmd)
+        if "`" in cmd or "$(" in cmd:
+            deny(tool, "no command substitution, not even inside quotes", cmd)
+        if unquoted_newline(cmd):
+            deny(tool, "one command at a time: a newline outside quotes starts another", cmd)
         try:
             lex = shlex.shlex(cmd, posix=True, punctuation_chars=";&|<>()")
             lex.whitespace_split = True
