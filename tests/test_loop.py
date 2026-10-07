@@ -117,6 +117,19 @@ class LoopTest(Fixture):
         self.assertEqual(read_meter(self.p)[-1]["recovered"], "orphan")
         self.assertFalse((self.t.unit_dir(3)).exists(), "no new unit was planned over it")
 
+    def test_usage_is_read_from_every_call(self):
+        self.run_units(1)
+        from hearthwork import worklog
+        from hearthwork.claude import read_usage
+        u = read_usage()
+        self.assertAlmostEqual(u["five_hour"]["used"], 0.42)
+        self.assertAlmostEqual(u["seven_day"]["used"], 0.87)
+        page = worklog.render(ui=True)
+        self.assertIn("42%</span>5-hour session", page)
+        self.assertIn("class=warnpct>87%</span>week", page, "a week past 80% is marked")
+        for c in self.calls():
+            self.assertIn("stream-json", c["argv"])
+
     def test_every_cost_is_the_call_not_the_session(self):
         self.run_units(1)
         rows = read_meter(self.p)

@@ -187,6 +187,32 @@ FILE_NAMES = {f for f, _ in FILES}
 LAYOUT = 3  # bump when archive pages should be written again
 
 
+def usage_tiles():
+    """The account's 5-hour session and week, from the newest Claude call's rate-limit event."""
+    from .claude import read_usage
+    u = read_usage()
+    if not u:
+        return ('<div><span>–</span>session and week: shown after the next Claude call</div>')
+    seen = time.strftime("%H:%M", time.localtime(u.get("seen") or time.time()))
+
+    def when(epoch, week=False):
+        if not epoch:
+            return "reset time unknown"
+        t = time.localtime(epoch)
+        return "resets " + time.strftime("%a %-d %b %H:%M" if week else "%H:%M", t)
+
+    out = []
+    for key, label, week in (("five_hour", "5-hour session", False), ("seven_day", "week", True)):
+        w = u.get(key)
+        if not w:
+            continue
+        pct = w["used"] * 100
+        warn = " class=warnpct" if pct >= 80 else ""
+        out.append(f'<div><span{warn}>{pct:.0f}%</span>{label} · {when(w.get("resets_at"), week)}'
+                   f'<small class=seen>as of {seen}</small></div>')
+    return "".join(out)
+
+
 def ts(r):
     try:
         return datetime.strptime(r["ts"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
@@ -405,6 +431,7 @@ def render(home_path=None, ui=False):
   <div><span>{money(sum(r.get('cost_usd') or 0 for r in week))}</span>7 days · {len(week)} units</div>
   <div><span>{f'{rate * 100:.0f}%' if rate is not None else '–'}</span>prompt cache hits, 7 days</div>
   <div><span>{money(sum(r.get('cost_usd') or 0 for r in all_rows))}</span>all time · {len(all_rows)} units</div>
+  {usage_tiles()}
 </div>"""
     return page(sections="".join(sections) or "<p class=empty>No projects yet.</p>", banners="".join(banners),
                 stats=stats, ui=ui)
@@ -500,9 +527,11 @@ h1{font-size:22px;margin:0}h1 small{color:var(--mute);font-weight:400;font-size:
 h2{font-size:18px;margin:36px 0 12px}h2 .repo{color:var(--mute);font-weight:400;font-size:13px;margin-left:6px;word-break:break-all}
 h3{margin:0;font-size:16px}
 .top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:18px 0}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:18px 0}
 .stats div{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:var(--mute);font-size:13px}
 .stats span{display:block;color:var(--ink);font-size:22px;font-weight:600}
+.stats span.warnpct{color:var(--red)}
+.stats .seen{display:block;font-size:11px;color:var(--mute);margin-top:2px}
 .halt{background:color-mix(in srgb,var(--red) 12%,var(--panel));border:1px solid var(--red);border-radius:10px;padding:12px 14px;margin:12px 0}
 .halt .hint,.nextstep .hint{color:var(--mute);font-size:13px;margin-top:4px}
 .nextstep{background:color-mix(in srgb,var(--accent) 9%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 45%,var(--line));border-radius:10px;padding:12px 14px;margin:12px 0}

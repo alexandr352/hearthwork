@@ -156,7 +156,9 @@ def run(*, claude_bin, cwd, prompt, model, timeout, label, costs, resume=None, t
         settings=None, setting_sources=None, append_system_prompt=None, add_dirs=(), env_extra=None,
         strict_mcp=True):
     """One `claude --print` call. Never raises for a failed call: the result says why."""
-    cmd = [claude_bin, "--print", "--model", model, "--output-format", "json",
+    # stream-json: the same final result as json, plus the rate-limit events the account's
+    # usage is read from (the 5-hour session and the week), at no cost.
+    cmd = [claude_bin, "--print", "--model", model, "--output-format", "stream-json", "--verbose",
            "--dangerously-skip-permissions"]
     if strict_mcp:
         cmd += ["--strict-mcp-config"]
@@ -194,11 +196,7 @@ def run(*, claude_bin, cwd, prompt, model, timeout, label, costs, resume=None, t
         return res
     res.seconds = round(time.time() - t0, 1)
     raw = p.stdout
-    brace = raw.find("{")
-    try:
-        out = json.loads(raw[brace:] if brace >= 0 else raw)
-    except ValueError:
-        out = None
+    out = parse_output(raw)
     if not isinstance(out, dict):
         res.error = f"exit {p.returncode}: {(p.stderr or raw).strip()[:400] or 'no output'}"
         res.walled = walled(cwd, resume, res.error, t0)
@@ -215,6 +213,70 @@ def run(*, claude_bin, cwd, prompt, model, timeout, label, costs, resume=None, t
         return res
     res.text = out.get("result") or ""
     return res
+
+
+def parse_output(raw):
+    """The final result event of a stream-json run (or a lone json envelope); the latest
+    rate-limit event it carried is stored as the account's usage on the way."""
+    out, limits = None, None
+    for line in (raw or "").splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(e, dict):
+            continue
+        if e.get("type") == "rate_limit_event":
+            limits = e.get("rate_limit_info")
+        elif e.get("type") == "result" or ("result" in e and "session_id" in e):
+            out = e
+    if out is None:
+        brace = (raw or "").find("{")
+        try:
+            whole = json.loads(raw[brace:]) if brace >= 0 else None
+            out = whole if isinstance(whole, dict) else None
+        except ValueError:
+            out = None
+    if limits:
+        note_usage(limits)
+    return out
+
+
+def usage_path():
+    from .home import home_dir
+    return home_dir() / "usage.json"
+
+
+def note_usage(info):
+    """Keep the newest usage reading: {"five_hour": {...}, "seven_day": {...}, "seen": epoch}."""
+    windows = (info or {}).get("unifiedWindows") or {}
+    keep = {}
+    for name in ("five_hour", "seven_day"):
+        w = windows.get(name) or {}
+        if isinstance(w.get("utilization"), (int, float)):
+            keep[name] = {"used": float(w["utilization"]), "resets_at": w.get("resetsAt")}
+    if not keep:
+        return
+    keep["seen"] = time.time()
+    keep["status"] = info.get("status")
+    try:
+        path = usage_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f".usage.{os.getpid()}.tmp")
+        tmp.write_text(json.dumps(keep))
+        os.replace(tmp, path)
+    except OSError:
+        pass
+
+
+def read_usage():
+    try:
+        return json.loads(usage_path().read_text())
+    except (OSError, ValueError):
+        return None
 
 
 def extract_json(text):

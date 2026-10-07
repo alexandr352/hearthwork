@@ -386,6 +386,23 @@ def cmd_next(args):
     return 0
 
 
+def cmd_usage(args):
+    import time
+    from .claude import read_usage
+    u = read_usage()
+    if not u:
+        out("no reading yet: the next Claude call hearthwork makes records it (a unit, the atlas, the chat)")
+        return 0
+    for key, label, fmt in (("five_hour", "5-hour session", "%H:%M"), ("seven_day", "week", "%a %-d %b %H:%M")):
+        w = u.get(key)
+        if w:
+            r = time.strftime(fmt, time.localtime(w["resets_at"])) if w.get("resets_at") else "unknown"
+            out(f"{label:16} {w['used'] * 100:5.1f}%   resets {r}")
+    ago = (time.time() - (u.get("seen") or time.time())) / 60
+    out(f"as of {ago:.0f} min ago (each Claude call hearthwork makes brings a new reading)")
+    return 0
+
+
 def cmd_repos(args):
     from . import guide
     found = guide.find_repos()
@@ -529,6 +546,7 @@ def parser():
     sp.set_defaults(fn=cmd_chat)
     with_project(sub.add_parser("next", help="the one next step, and how to do it")).set_defaults(fn=cmd_next)
     sub.add_parser("repos", help="the git repositories found on this machine").set_defaults(fn=cmd_repos)
+    sub.add_parser("usage", help="your 5-hour session and week, from the newest Claude call").set_defaults(fn=cmd_usage)
     sp = sub.add_parser("economy", help="show or switch what Claude calls carry: MCP servers, your CLAUDE.md, the cache policy")
     sp.add_argument("--mcp", choices=["on", "off"])
     sp.add_argument("--claude-md", dest="claude_md", choices=["on", "off"])

@@ -18,6 +18,10 @@ with open(calls, "a") as f:
                         "ttl": os.environ.get("CLAUDE_CODE_PROMPT_CACHE_TTL")}) + "\n")
 
 def envelope(result, is_error=False, code=0):
+    print(json.dumps({"type": "system", "subtype": "init", "session_id": sid}))
+    print(json.dumps({"type": "rate_limit_event", "rate_limit_info": {"status": "allowed", "unifiedWindows": {
+        "five_hour": {"utilization": 0.42, "resetsAt": 1791397800},
+        "seven_day": {"utilization": 0.87, "resetsAt": 1791954000}}}}))
     print(json.dumps({"type": "result", "result": result, "is_error": is_error, "session_id": sid,
                       "total_cost_usd": totals[sid], "usage": {"input_tokens": 10, "cache_read_input_tokens": 90,
                       "cache_creation_input_tokens": 0, "output_tokens": 5}, "modelUsage": {"fake-model": {}}}))

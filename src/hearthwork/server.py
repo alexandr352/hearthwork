@@ -33,7 +33,8 @@ def stamp(h):
     """Changes whenever any record the page shows changes."""
     m = 0.0
     for p in home.projects(h):
-        for f in (p.units_log, p.state_path, p.dir / "atlas.md", p.dir / "running.json", p.dir / ".lock"):
+        for f in (p.units_log, p.state_path, p.dir / "atlas.md", p.dir / "running.json", p.dir / ".lock",
+                  h / "usage.json"):
             try:
                 m = max(m, f.stat().st_mtime)
             except OSError:
@@ -308,6 +309,8 @@ class Handler(BaseHTTPRequestHandler):
                         line = describe_tool(block.get("name"), block.get("input"))
                         history_add(h, "tool", line)
                         self.emit({"type": "tool", "text": line})
+            elif t == "rate_limit_event":
+                claude.note_usage(ev.get("rate_limit_info"))
             elif t == "result":
                 final = ev
         p.wait(timeout=30)

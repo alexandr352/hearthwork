@@ -186,6 +186,12 @@ deleted: the archive is another view of the same records. Measured on a generate
 of 1,000 units over 200 tickets: the page builds in under half a second, `operator ui`
 serves 135 KB (reports load when you open them), and the largest ticket page is 17 KB.
 
+## Your limits
+
+Every Claude call hearthwork makes already reports your account's limits, so the page shows
+your 5-hour session and your week, with their reset times, at no extra cost (`operator usage`
+in the terminal). The reading is as fresh as the last call; a share past 80% turns red.
+
 ## Stats
 
 `stats.html`, linked from the top of the log, is the whole history in numbers: totals
