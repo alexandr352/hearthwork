@@ -19,11 +19,15 @@ import os
 import re
 import shlex
 import sys
+import tempfile
 import time
 from pathlib import Path
 
 POLICY = {}
 HOME = str(Path.home())
+# Scratch space, by its real path: on macOS /tmp is a link to /private/tmp, and each user also
+# has a private temporary folder under /var/folders that tools use through $TMPDIR.
+TMP = sorted({os.path.realpath(p) for p in ("/tmp", tempfile.gettempdir(), os.environ.get("TMPDIR") or "/tmp")})
 
 SECRET_NAMES = re.compile(
     r"(^|/)(\.ssh|\.gnupg|\.aws|\.azure|\.kube|\.docker|\.netrc|\.pgpass|\.npmrc|\.pypirc|"
@@ -225,7 +229,7 @@ def shell_check(cmd, cwd, write_roots):
         tgt = m.group(1)
         if tgt.startswith("/dev/"):
             continue
-        if not under(norm(tgt, cwd), write_roots + ["/tmp"]):
+        if not under(norm(tgt, cwd), write_roots + TMP):
             return f"writing to {tgt} is outside the repository"
     if re.search(r"(?:^|[\s;&|])rm\s+(-\w*[rf]\w*\s+)+(/|~|\$HOME|\*)(\s|$)", body):
         return "rm on / or the home directory is not allowed"
@@ -246,7 +250,7 @@ def read_only_shell(cmd, cwd):
     repo = os.path.realpath(POLICY["repo"])
     for m in re.finditer(r"(?:^|[^<>&0-9])>>?\s*['\"]?([^\s'\";&|]+)", body):
         tgt = m.group(1)
-        if not tgt.startswith("/dev/") and (under(norm(tgt, cwd), [repo]) or not under(norm(tgt, cwd), ["/tmp"])):
+        if not tgt.startswith("/dev/") and (under(norm(tgt, cwd), [repo]) or not under(norm(tgt, cwd), TMP)):
             return f"this session is read-only: it does not write {tgt}"
     if re.search(r"(?:^|\s)(sed|perl)\s+(-\w*i|--in-place)", body):
         return "this session is read-only: no edits in place"
@@ -264,7 +268,7 @@ def read_only_shell(cmd, cwd):
 def check_executor(tool, ti, cwd):
     repo = os.path.realpath(POLICY["repo"])
     read_only = bool(POLICY.get("read_only"))
-    write_roots = ["/tmp"] if read_only else [repo, "/tmp"]
+    write_roots = list(TMP) if read_only else [repo] + TMP
     if tool in ("Read", "Grep", "Glob", "LS"):
         p = file_tool_path(ti)
         if not p:

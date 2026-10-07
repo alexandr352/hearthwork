@@ -122,6 +122,36 @@ class ReadOnlyFence(unittest.TestCase):
                 self.assertEqual(ask(pol, tool, ti, repo), want, f"{tool} {ti}")
 
 
+class LinkedTmp(unittest.TestCase):
+    """macOS: /tmp is a link to /private/tmp and $TMPDIR points under /var/folders. Scratch
+    space is recognised by its real path, and nothing else is let through by it."""
+
+    def test_scratch_by_real_path(self):
+        base = tempfile.mkdtemp(prefix=".hw-fence-", dir=str(Path.home()))
+        try:
+            real = os.path.join(base, "private-tmp")
+            os.mkdir(real)
+            link = os.path.join(base, "tmp")
+            os.symlink(real, link)
+            repo = os.path.join(base, "repo")
+            os.mkdir(repo)
+            pol = {"mode": "executor", "repo": repo, "protected": ["main"]}
+            env = dict(os.environ, TMPDIR=link, HEARTHWORK_FENCE_POLICY=json.dumps(pol))
+
+            def ask_env(tool, ti):
+                out = subprocess.run([sys.executable, str(FENCE)], input=json.dumps(
+                    {"tool_name": tool, "tool_input": ti, "cwd": repo}), capture_output=True, text=True, env=env).stdout
+                return json.loads(out)["hookSpecificOutput"]["permissionDecision"]
+
+            self.assertEqual(ask_env("Write", {"file_path": link + "/x.txt", "content": "x"}), "allow")
+            self.assertEqual(ask_env("Bash", {"command": f"echo hi > {link}/y.txt"}), "allow")
+            self.assertEqual(ask_env("Write", {"file_path": base + "/elsewhere.txt", "content": "x"}), "deny")
+            self.assertEqual(ask_env("Bash", {"command": f"echo hi > {base}/elsewhere.txt"}), "deny")
+        finally:
+            import shutil
+            shutil.rmtree(base)
+
+
 class OperatorAndSpiritFence(unittest.TestCase):
     def test_operator_stays_home(self):
         with tempfile.TemporaryDirectory() as d:
