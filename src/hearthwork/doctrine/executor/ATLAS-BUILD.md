@@ -51,7 +51,8 @@ one or more test files (write `unknown` when the repository does not show it):
 - lab lint: <the lint command, with {files} if it takes files> [source]
 - lab build: <only if tests need a build first> [source]
 - lab up: <only if tests need a running server: the command that starts it in the foreground> [source]
-- lab health: <the URL that answers once that server is up> [source]
+- lab health: <the local URL that answers once that server is up, when the dev server's config, an
+  env example or a script names its port; else unknown: the lab finds it when the server starts> [source]
 - lab scratch: <a folder that does NOT exist yet, where the test runner finds a throwaway test
   named on its command line (it will be excluded from git whole, so never an existing folder):
   e.g. tests/_scratch when the runner only collects under tests/; else .hearthwork-scratch> [source]

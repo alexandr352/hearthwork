@@ -4,6 +4,12 @@ To update: `~/.hearthwork-venv/bin/pip install --upgrade git+https://github.com/
 then `operator upgrade`, then restart `operator ui`. Versions marked **upgrade** change the doctrine
 the operator or the spirit reads, so `operator upgrade` matters for them.
 
+## 0.3.4 (upgrade)
+- `operator lab up` finds the server's address itself: from what it prints as it starts
+  (`Local: http://localhost:5173/`, `listening on port 3355`), else from the TCP port it opens. It is up only
+  when that address answers, and the address is saved as `health`. A server-backed project needs one thing
+  from you: the command that starts it.
+
 ## 0.3.3 (upgrade)
 - `operator lab status` asks the health URL itself and prints what came back (`HTTP 200`, `no answer`), and
   names a missing health URL when the lab has a server.

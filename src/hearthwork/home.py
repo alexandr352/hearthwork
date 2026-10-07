@@ -97,7 +97,7 @@ test = ""                      # one or more test files: e.g. "pytest -q {{files
 lint = ""                      # e.g. "ruff check {{files}}"
 build = ""                     # only if tests need a build first
 up = ""                        # only if tests need a running server (it runs in its own process group)
-health = ""                    # the URL `up` waits for
+health = ""                    # the URL `up` waits for; left empty, `up` finds it and saves it here
 scratch = ".hearthwork-scratch"  # git-excluded folder for disposable probes (where the test runner finds them)
 ab = "worktree"                # worktree (your checkout is never touched) | in-place (tests against the server)
 """

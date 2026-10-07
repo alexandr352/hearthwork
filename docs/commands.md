@@ -39,7 +39,7 @@ Units use it too; the fence holds them to it.
 | `operator lab ab <file...> [--dry-run]` | The carried A/B: the named tests on your uncommitted work and on HEAD (the named files kept), and the verdict: GUARDS, PASSES-WITHOUT-CHANGE, BROKEN-BY-CHANGE or RED-AT-BOTH. `--dry-run` says what it would compare. Runs detached: closing the terminal never strands your work. |
 | `operator lab ab --last` | Follow the running (or last) A/B again. |
 | `operator lab restore` | Put back the work an A/B that died left saved under a git ref, and prove it. Any acting lab verb does this first anyway. |
-| `operator lab up \| down \| restart \| build [--force] \| logs [n]` | The server and the build, when the project has them. A unit that needs the server says so in its plan, and the loop raises it before the unit and takes it down after. |
+| `operator lab up \| down \| restart \| build [--force] \| logs [n]` | The server and the build, when the project has them. `up` needs only the start command: it finds the address from what the server prints or the port it opens, waits until it answers, and saves it as `health`. A unit that needs the server says so in its plan, and the loop raises it before the unit and takes it down after. |
 
 ## Tickets
 

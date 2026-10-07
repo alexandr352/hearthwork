@@ -20,7 +20,8 @@ The commands come from the [lab] table of the project's project.toml:
     lint = "ruff check {files}"     # {files} optional
     build = "npm run build"         # optional
     up = "npm run serve"            # optional: a server the tests need, run in its own process group
-    health = "http://127.0.0.1:5173/"   # optional: up waits for it to answer
+    health = ""                     # optional: the URL up waits for; left empty, up finds it (what the
+                                    #   server prints, else the port it opens) and saves it here
     down = ""                       # optional: run before the process group is stopped
     scratch = ".hearthwork-scratch" # git-excluded folder for disposable probes
     ab = "worktree"                 # worktree: BASE runs in a throwaway git worktree, your checkout
@@ -384,7 +385,67 @@ def _append(path, obj):
 
 # --- verbs -------------------------------------------------------------------
 
+ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+LOCAL_URL = re.compile(r"(https?)://(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1?\]|\[::\])(?::(\d{2,5}))?(/[^\s'\"<>)]*)?", re.I)
+PORT_LINE = re.compile(r"(?i)\b(?:port|listening on|listening at|running on)\b\D{0,12}?(\d{4,5})\b")
+
+
+def url_from_output(text):
+    """The local address a server printed as it started (`Local: http://localhost:5173/`,
+    `listening on port 3355`), or None."""
+    text = ANSI.sub("", text or "")
+    m = LOCAL_URL.search(text)
+    if m:
+        scheme, _host, port, path = m.groups()
+        return f"{scheme.lower()}://localhost{':' + port if port else ''}{path or '/'}"
+    m = PORT_LINE.search(text)
+    if m:
+        return f"http://localhost:{m.group(1)}/"
+    return None
+
+
+def _group_pids(pgid):
+    out = set()
+    try:
+        r = subprocess.run(["ps", "-A", "-o", "pid=,pgid="], capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return out
+    for line in r.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[1] == str(pgid):
+            out.add(int(parts[0]))
+    return out
+
+
+def listening_ports(pgid):
+    """TCP ports the server's process group listens on: lsof (macOS, most Linux), else ss."""
+    ports = []
+    if shutil.which("lsof"):
+        try:
+            r = subprocess.run(["lsof", "-nP", "-a", "-iTCP", "-sTCP:LISTEN", "-g", str(pgid), "-Fn"],
+                               capture_output=True, text=True, timeout=10).stdout
+            ports = [int(x.rsplit(":", 1)[1]) for x in r.splitlines() if x.startswith("n") and ":" in x
+                     and x.rsplit(":", 1)[1].isdigit()]
+        except (OSError, subprocess.SubprocessError):
+            ports = []
+    if not ports and shutil.which("ss"):
+        pids = _group_pids(pgid)
+        try:
+            r = subprocess.run(["ss", "-ltnpH"], capture_output=True, text=True, timeout=10).stdout
+        except (OSError, subprocess.SubprocessError):
+            r = ""
+        for line in r.splitlines():
+            found = {int(x) for x in re.findall(r"pid=(\d+)", line)}
+            cols = line.split()
+            if found & pids and len(cols) >= 4 and cols[3].rsplit(":", 1)[-1].isdigit():
+                ports.append(int(cols[3].rsplit(":", 1)[1]))
+    return sorted(set(ports))
+
+
 def up(p, echo=True, owner=None):
+    """Start the server and wait until it answers. With no health URL set, the address is
+    found: in what the server prints as it starts, else in the port it listens on; the
+    address found is saved as `health` so status and later runs ask it."""
     c = conf(p)
     if not c["up"]:
         return "no server is configured ([lab] up in project.toml): nothing to bring up"
@@ -398,24 +459,48 @@ def up(p, echo=True, owner=None):
     lf = open(log, "a", encoding="utf-8")
     lf.write(f"\n=== up {time.strftime('%Y-%m-%d %H:%M:%S')}: {c['up']}\n")
     lf.flush()
+    offset = lf.tell()
     proc = subprocess.Popen(c["up"], shell=True, cwd=str(p.repo), stdout=lf, stderr=subprocess.STDOUT,
-                            stdin=subprocess.DEVNULL, start_new_session=True)
+                            stdin=subprocess.DEVNULL, start_new_session=True,
+                            env={**os.environ, "PYTHONUNBUFFERED": "1", "FORCE_COLOR": "0"})
     lf.close()
-    _write(d / "state.json", {"pid": proc.pid, "started": time.time(), "cmd": c["up"], "owner": owner})
-    t0 = time.time()
+    state = {"pid": proc.pid, "started": time.time(), "cmd": c["up"], "owner": owner}
+    _write(d / "state.json", state)
+    t0, url, source, said = time.time(), c["health"] or None, "set" if c["health"] else None, ""
     while time.time() - t0 < c["up_timeout"]:
         if proc.poll() is not None:
             _write(d / "state.json", {})
             raise LabError(f"the server exited (rc {proc.returncode}) before it was up; "
                            f"the last lines of {log}:\n{_tail(log, 30)}")
-        h = _healthy(c, timeout=2)
-        if h or (h is None and time.time() - t0 > 2):
-            return f"the lab is up (pid {proc.pid}, {time.time() - t0:.0f}s)"
+        if not url:
+            try:
+                with open(log, encoding="utf-8", errors="replace") as f:
+                    f.seek(offset)
+                    url = url_from_output(f.read())
+                source = "found in the server's output" if url else None
+            except OSError:
+                pass
+        if not url and time.time() - t0 > 3:
+            ports = listening_ports(proc.pid)
+            if ports:
+                url, source = f"http://localhost:{ports[0]}/", f"found from the port it listens on ({ports[0]})"
+        if url:
+            ok, said = health_probe({"health": url}, timeout=2)
+            if ok:
+                if source != "set":
+                    set_keys(p, {"health": url})
+                    p.lab = dict(p.lab or {}, health=url)
+                state.update(health=url, health_source=source)
+                _write(d / "state.json", state)
+                return (f"the lab is up (pid {proc.pid}, {time.time() - t0:.0f}s): {url} answers {said}"
+                        + ("" if source == "set" else f" ({source}; saved as health)"))
         time.sleep(1)
     _killpg(proc.pid)
     _write(d / "state.json", {})
-    raise LabError(f"the server did not answer {c['health']} within {c['up_timeout']}s; "
-                   f"the last lines of {log}:\n{_tail(log, 30)}")
+    where = (f"{url} did not answer ({said})" if url else
+             "it printed no local address and listens on no TCP port")
+    raise LabError(f"the server was not up within {c['up_timeout']}s: {where}. Set the address yourself with "
+                   f"operator lab config health \"<url>\" if it is unusual; the last lines of {log}:\n{_tail(log, 30)}")
 
 
 def restart(p):

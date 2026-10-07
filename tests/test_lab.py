@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -212,6 +213,68 @@ class Server(LabFixture):
         self.assertTrue(lab.reap_orphan_server(p, echo=None), "a server whose run died is taken down")
         self.assertIn("no answer", lab.health_probe(lab.conf(p), timeout=1)[1])
         self.assertEqual(lab.summary(p)[0], "DOWN")
+
+
+SERVER = """import http.server, socketserver, sys
+class H(http.server.SimpleHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+s = socketserver.TCPServer(("127.0.0.1", 0), H)
+port = s.server_address[1]
+if sys.argv[1] == "url":
+    print("\\x1b[32m  Local:   http://localhost:%d/\\x1b[0m" % port, flush=True)
+elif sys.argv[1] == "port":
+    print("app listening on port %d" % port, flush=True)
+s.serve_forever()
+"""
+
+
+class FindsTheAddress(LabFixture):
+    """`operator lab up` with no health URL: the address is found and saved."""
+
+    def bring_up(self, how, timeout=20):
+        (self.repo / "serve.py").write_text(SERVER)
+        lab.set_keys(self.p, {"up": f"{sys.executable} serve.py {how}", "up_timeout": timeout})
+        self.raised = p = home.resolve_project("shop")
+        return p, lab.up(p, echo=False)
+
+    def tearDown(self):
+        if getattr(self, "raised", None):
+            lab.down(self.raised)  # before the home is removed: down reads the server's state there
+        super().tearDown()
+
+    def test_from_what_the_server_prints(self):
+        p, msg = self.bring_up("url")
+        self.assertIn("found in the server's output; saved as health", msg)
+        saved = home.resolve_project("shop").lab["health"]
+        self.assertRegex(saved, r"^http://localhost:\d+/$")
+        self.assertEqual(lab.summary(home.resolve_project("shop"))[0], "UP")
+
+    def test_from_a_port_line(self):
+        _, msg = self.bring_up("port")
+        self.assertIn("found in the server's output", msg)
+
+    @unittest.skipUnless(shutil.which("lsof") or shutil.which("ss"), "needs lsof or ss")
+    def test_from_the_port_it_opens_when_it_prints_nothing(self):
+        _, msg = self.bring_up("silent")
+        self.assertIn("found from the port it listens on", msg)
+
+    def test_a_server_that_never_answers_fails_with_its_log(self):
+        (self.repo / "quiet.py").write_text("import time\nprint('starting...', flush=True)\ntime.sleep(60)\n")
+        lab.set_keys(self.p, {"up": f"{sys.executable} quiet.py", "up_timeout": 5})
+        with self.assertRaises(lab.LabError) as e:
+            lab.up(home.resolve_project("shop"), echo=False)
+        self.assertIn("printed no local address and listens on no TCP port", str(e.exception))
+        self.assertIn("starting...", str(e.exception))
+        self.assertEqual(lab.summary(home.resolve_project("shop"))[0], "DOWN")
+
+    def test_reading_addresses(self):
+        self.assertEqual(lab.url_from_output("  ➜  Local:   http://localhost:5173/\n"), "http://localhost:5173/")
+        self.assertEqual(lab.url_from_output("Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C)"),
+                         "http://localhost:8000/")
+        self.assertEqual(lab.url_from_output("Server started on 0.0.0.0:3355? no: listening on port 3355"),
+                         "http://localhost:3355/")
+        self.assertIsNone(lab.url_from_output("compiling 412 modules"))
 
 
 class Contract(unittest.TestCase):

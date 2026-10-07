@@ -595,9 +595,11 @@ def cmd_lab(args):
                     out(f"  {k}: {c[k]}")
             if c["health"]:
                 ok, said = lab.health_probe(c)
-                out(f"  health: {c['health']} — {said}" + ("" if ok else "  (the lab counts the server up only when it answers)"))
+                src = (lab._read(p.dir / "lab" / "state.json") or {}).get("health_source")
+                out(f"  health: {c['health']}" + (f" ({src})" if src and src != "set" else "") + f" — {said}"
+                    + ("" if ok else "  (the lab counts the server up only when it answers)"))
             elif c["up"]:
-                out('  health: not set — operator lab config health "<a URL that answers when the app is ready>"')
+                out("  health: found when the server starts (operator lab up), from what it prints or the port it opens")
             if not c["test"]:
                 out('  no test command yet: operator lab config --from-atlas, or operator lab config test "pytest -q {files}"')
             out(f"  scratch: {c['scratch']}/ (git-excluded)   A/B: {c['ab']}")

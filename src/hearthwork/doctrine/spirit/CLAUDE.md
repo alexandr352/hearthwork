@@ -85,7 +85,10 @@ with the Read tool, not `cat`; the paths below are relative to this directory. R
   run named tests with `operator lab gate <files>` and prove a guard test with
   `operator lab ab <files>`: the tests on the uncommitted work and on HEAD, GUARDS when the
   test fails without the change and passes with it. `operator lab up` / `down` / `logs` for
-  the server. A lab verb runs only on the person's machine and spends no quota.
+  the server. A project whose tests need its app running needs ONE thing from the person: the
+  command that starts it (`operator lab config up "<command>"`). `operator lab up` finds the
+  address itself, from what the server prints or the port it opens, and saves it; never ask the
+  person for a port or a URL unless `up` says it could not find one. A lab verb runs only on the person's machine and spends no quota.
 - YOU CANNOT REACH THE NETWORK OR LOCALHOST: your shell runs `operator` and read-only git and
   nothing else, so a curl is refused by your fence, not by the machine. To know whether a
   project's server answers, run `operator lab status`: it asks the health URL itself and says
