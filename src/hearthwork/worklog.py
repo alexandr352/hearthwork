@@ -181,18 +181,43 @@ def pill(p, tid, r, pl, label, retries=0):
             f'<i>{num}</i> {esc(label)}{" <em>commit</em>" if k == "commit" else ""}{extra}</a>')
 
 
-def unit_card(p, rec, ui=False):
+FILES = (("prompt.md", "Prompt the operator wrote"), ("report.md", "Executor report"),
+         ("survey.md", "Survey of the tree"), ("facts.md", "Repository facts (from git)"))
+FILE_NAMES = {f for f, _ in FILES}
+LAYOUT = 3  # bump when archive pages should be written again
+
+
+def ts(r):
+    try:
+        return datetime.strptime(r["ts"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
+    except (KeyError, ValueError, TypeError):
+        return 0
+
+
+def record_path(p, tid, n, name):
+    return f"projects/{p.name}/tickets/{tid}/units/{n:02d}/{name}"
+
+
+def unit_card(p, rec, ui=False, files="embed", base=""):
+    """files: embed (the text inside the page), lazy (fetched when opened, `operator ui`),
+    or link (a link to the record on disk, the archive pages)."""
     t = Ticket(p, rec["ticket"])
     n = rec.get("unit")
     d = t.unit_dir(n) if n else None
     v = rec.get("verdict") or {}
     state = unit_state(rec)
-    files = []
-    for name, label in (("prompt.md", "Prompt the operator wrote"), ("report.md", "Executor report"),
-                        ("survey.md", "Survey of the tree"), ("facts.md", "Repository facts (from git)")):
-        txt = read_text(d / name) if d else None
-        if txt:
-            files.append(f"<details class=file><summary>{label}</summary><pre>{esc(txt)}</pre></details>")
+    parts = []
+    for name, label in FILES:
+        f = d / name if d else None
+        if not f or not f.exists():
+            continue
+        rel = record_path(p, rec["ticket"], n, name)
+        if files == "lazy":
+            parts.append(f'<details class=file data-src="{esc(rel)}"><summary>{label}</summary><pre>loading…</pre></details>')
+        elif files == "link":
+            parts.append(f'<a class=filelink href="{esc(base + rel)}">{label}</a>')
+        else:
+            parts.append(f"<details class=file><summary>{label}</summary><pre>{esc(read_text(f))}</pre></details>")
     when = esc((rec.get("ts") or "").replace("T", " ").replace("Z", " UTC"))
     git = rec.get("git") or {}
     gitline = (f"{git.get('commits', 0)} commit(s), {git.get('files', 0)} file(s), tree "
@@ -217,29 +242,102 @@ def unit_card(p, rec, ui=False):
     {f'<div class=next>next: {esc(v.get("next"))}</div>' if v.get('next') else ''}
     <div class=phases>{phase_line(rec)}</div>
     {f'<button class=ask data-ask="{esc(p.name)}|{esc(rec["ticket"])}|{n}">ask the spirit about this unit</button>' if ui else ''}
-    {''.join(files)}
+    <div class=files>{''.join(parts)}</div>
   </div>
 </details>"""
+
+
+def ticket_status(st, tid):
+    return ("ready" if tid in (st.get("ready") or []) else
+            "halted" if (st.get("halted") or {}).get("ticket") == tid else
+            "active" if st.get("active_ticket") == tid else "idle")
+
+
+def by_ticket(rows):
+    out = {}
+    for r in rows:
+        out.setdefault(r.get("ticket"), []).append(r)
+    for tid in out:
+        out[tid].sort(key=lambda r: (r.get("unit") or 0, ts(r)))
+    return out
+
+
+def window(p, trs, limit):
+    """The last `limit` units, reaching back to the start of the chain the first of them
+    belongs to, so a chain is never shown cut in half."""
+    if not limit or len(trs) <= limit:
+        return trs
+    i = len(trs) - limit
+    chain = unit_plan(p, trs[i]).get("chain")
+    while chain and i > 0 and unit_plan(p, trs[i - 1]).get("chain") == chain:
+        i -= 1
+    return trs[i:]
+
+
+def mode_html(mode):
+    if not mode:
+        return ""
+    return (f' <span class=mode tabindex=0 aria-label="{esc(mode)}: {esc(MODES.get(mode, ""))}" '
+            f'data-tip="{esc(MODES.get(mode, ""))}">{esc(mode)}</span>')
+
+
+def ticket_section(p, tid, trs, st, ui=False, files="embed", base="", limit=None, archive_href=None):
+    t = Ticket(p, tid)
+    meta = t.read("meta.json") or {}
+    last_v = next((r.get("verdict") for r in reversed(trs) if r.get("verdict")), None) or {}
+    done, planned = last_v.get("units_done"), last_v.get("units_planned")
+    status = ticket_status(st, tid)
+    shown = window(p, trs, limit)
+    hidden = len(trs) - len(shown)
+    chain_open = (t.read("chain.json") or {}).get("chain")
+    strip = story(p, tid, shown, chain_open, status in ("active", "halted"))
+    progress = f"{done} of {planned} units done" if planned else ""
+    nums = " · ".join(x for x in (progress, f"{len(trs)} run{'s' if len(trs) != 1 else ''}",
+                                 money(sum(r.get('cost_usd') or 0 for r in trs))) if x)
+    more = (f'<a class=more href="{esc(archive_href)}">{hidden} earlier unit{"s" if hidden != 1 else ""} '
+            f'of this ticket are in its archive page →</a>') if hidden and archive_href else ""
+    return f"""
+<section class=ticket id="t-{esc(p.name)}-{esc(tid)}">
+  <header><h3>{esc(tid)}{mode_html(ticket_mode(p, trs))} <span class="badge {status}">{status}</span></h3>
+    <div class=sub>{esc(meta.get('title') or '')}</div>
+    <div class=nums>{nums}</div>
+    <div class=strip>{strip}</div>
+    {f'<div class=next>next: {esc(last_v.get("next"))}</div>' if last_v.get('next') and status != 'ready' else ''}
+  </header>
+  {''.join(unit_card(p, r, ui, files, base) for r in reversed(shown))}
+  {more}
+</section>"""
+
+
+def compact_row(p, tid, trs, st, href):
+    meta = Ticket(p, tid).read("meta.json") or {}
+    status = ticket_status(st, tid)
+    last = max((ts(r) for r in trs), default=0)
+    when = time.strftime("%Y-%m-%d", time.localtime(last)) if last else ""
+    return (f'<a class=row href="{esc(href)}"><b>{esc(tid)}</b>{mode_html(ticket_mode(p, trs))}'
+            f'<span class="badge {status}">{status}</span><span class=rtitle>{esc(meta.get("title") or "")}</span>'
+            f'<span class=rnums>{len(trs)} units · {money(sum(r.get("cost_usd") or 0 for r in trs))} · {when}</span></a>')
+
+
+def recent_units(h):
+    try:
+        return max(1, int((home.load_config(h).get("log") or {}).get("recent_units", 20)))
+    except (TypeError, ValueError):
+        return 20
 
 
 def render(home_path=None, ui=False):
     h = home_path or home.home_dir()
     projects = home.projects(h)
+    recent = recent_units(h)
     now = time.time()
     day_ago, week_ago = now - 86400, now - 7 * 86400
-
-    def ts(r):
-        try:
-            return datetime.strptime(r["ts"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
-        except (KeyError, ValueError):
-            return 0
-
-    all_rows = []
+    per_project = [(p, p.read_state(), read_meter(p)) for p in projects]
+    all_rows = [r for _, _, rows in per_project for r in rows]
+    newest = sorted(((ts(r), p.name, r.get("ticket")) for p, _, rows in per_project for r in rows), reverse=True)
+    in_window = {(name, tid) for _, name, tid in newest[:recent]}
     sections, banners = [], []
-    for p in projects:
-        st = p.read_state()
-        rows = read_meter(p)
-        all_rows += rows
+    for p, st, rows in per_project:
         if st.get("halted"):
             hl = st["halted"]
             banners.append(f"""<div class=halt><b>{esc(p.name)} is halted</b> on {esc(hl.get('ticket'))}
@@ -247,39 +345,25 @@ def render(home_path=None, ui=False):
               <div class=hint>answer with <code>operator rule "…"</code>, or talk it through with the spirit
               (<code>operator chat</code>)</div>
               {f'<button class=ask data-ask="{esc(p.name)}|{esc(hl.get("ticket"))}|{esc(hl.get("unit") or "")}">talk it through here</button>' if ui else ''}</div>""")
-        by_ticket = {}
-        for r in rows:
-            by_ticket.setdefault(r.get("ticket"), []).append(r)
-        order = sorted(by_ticket, key=lambda k: max(ts(r) for r in by_ticket[k]), reverse=True)
-        tickets_html = []
+        groups = by_ticket(rows)
+        order = sorted(groups, key=lambda k: max(ts(r) for r in groups[k]), reverse=True)
+        full, older = [], []
         for tid in order:
-            trs = sorted(by_ticket[tid], key=lambda r: (r.get("unit") or 0, ts(r)))
-            t = Ticket(p, tid)
-            meta = t.read("meta.json") or {}
-            last_v = next((r.get("verdict") for r in reversed(trs) if r.get("verdict")), None) or {}
-            done, planned = last_v.get("units_done"), last_v.get("units_planned")
-            status = ("ready" if tid in (st.get("ready") or []) else
-                      "halted" if (st.get("halted") or {}).get("ticket") == tid else
-                      "active" if st.get("active_ticket") == tid else "idle")
-            mode = ticket_mode(p, trs)
-            chain_open = (t.read("chain.json") or {}).get("chain")
-            strip = story(p, tid, trs, chain_open, status in ("active", "halted"))
-            progress = f"{done} of {planned} units done" if planned else ""
-            nums = " · ".join(x for x in (progress, f"{len(trs)} run{'s' if len(trs) != 1 else ''}",
-                                         money(sum(r.get('cost_usd') or 0 for r in trs))) if x)
-            tickets_html.append(f"""
-<section class=ticket>
-  <header><h3>{esc(tid)}{f' <span class=mode tabindex=0 aria-label="{esc(mode)}: {esc(MODES.get(mode, ""))}" data-tip="{esc(MODES.get(mode, ""))}">{esc(mode)}</span>' if mode else ''} <span class="badge {status}">{status}</span></h3>
-    <div class=sub>{esc(meta.get('title') or '')}</div>
-    <div class=nums>{nums}</div>
-    <div class=strip>{strip}</div>
-    {f'<div class=next>next: {esc(last_v.get("next"))}</div>' if last_v.get('next') and status != 'ready' else ''}
-  </header>
-  {''.join(unit_card(p, r, ui) for r in reversed(trs))}
-</section>""")
-        sections.append(f"""<h2>{esc(p.name)} <span class=repo>{esc(p.repo)}</span></h2>
-{''.join(tickets_html) or '<p class=empty>No units yet. <code>operator run</code> starts one.</p>'}""")
-
+            href = f"archive/{p.name}/{tid}.html"
+            if ticket_status(st, tid) in ("active", "halted") or (p.name, tid) in in_window:
+                full.append(ticket_section(p, tid, groups[tid], st, ui, "lazy" if ui else "embed",
+                                           limit=recent, archive_href=href))
+            else:
+                older.append(compact_row(p, tid, groups[tid], st, href))
+        older_html = ""
+        if older:
+            head, tail = older[:20], older[20:]
+            older_html = (f'<div class=older><h4>Earlier tickets</h4>{"".join(head)}'
+                          + (f'<details><summary>{len(tail)} more</summary>{"".join(tail)}</details>' if tail else "")
+                          + "</div>")
+        link = f'<a class=archlink href="archive/index.html">all tickets →</a>' if groups else ""
+        sections.append(f"""<h2>{esc(p.name)} <span class=repo>{esc(p.repo)}</span>{link}</h2>
+{''.join(full) or '<p class=empty>No units yet. <code>operator run</code> starts one.</p>'}{older_html}""")
     day = [r for r in all_rows if ts(r) >= day_ago]
     week = [r for r in all_rows if ts(r) >= week_ago]
     rate = cache_rate(week)
@@ -289,21 +373,75 @@ def render(home_path=None, ui=False):
   <div><span>{f'{rate * 100:.0f}%' if rate is not None else '–'}</span>prompt cache hits, 7 days</div>
   <div><span>{money(sum(r.get('cost_usd') or 0 for r in all_rows))}</span>all time · {len(all_rows)} units</div>
 </div>"""
-    page = TEMPLATE.replace("{{BANNERS}}", "".join(banners)).replace("{{STATS}}", stats) \
-        .replace("{{SECTIONS}}", "".join(sections) or "<p class=empty>No projects yet.</p>") \
+    return page(sections="".join(sections) or "<p class=empty>No projects yet.</p>", banners="".join(banners),
+                stats=stats, ui=ui)
+
+
+def page(sections, banners="", stats="", ui=False, title="Hearthwork Log", note=None, root=""):
+    return TEMPLATE.replace("{{BANNERS}}", banners).replace("{{STATS}}", stats) \
+        .replace("{{SECTIONS}}", sections) \
         .replace("{{MODES}}", "".join(f"<dt>{esc(m)}</dt><dd>{esc(d)}</dd>" for m, d in MODES.items())) \
         .replace("{{UPDATED}}", time.strftime("%Y-%m-%d %H:%M", time.localtime())) \
-        .replace("{{REFRESH}}", "" if ui else '<meta http-equiv=refresh content=60>') \
-        .replace("{{NOTE}}", "live" if ui else "refreshes every minute") \
+        .replace("{{REFRESH}}", "" if ui or note else '<meta http-equiv=refresh content=60>') \
+        .replace("{{NOTE}}", note or ("live" if ui else "refreshes every minute")) \
+        .replace("{{TITLE}}", esc(title)).replace("{{ROOT}}", root) \
         .replace("{{TOPBTN}}", '<button id=eco-btn class=theme aria-haspopup=dialog title="what Claude calls carry">economy</button>'
                  '<button id=wake class=theme title="keep this screen on while the page is in front" hidden>screen on</button>' if ui else "")
-    return page
+
+
+# --- the archive: one page per ticket, and an index ---------------------------------
+
+def archive(h):
+    """Write the archive pages of tickets that changed since they were last written, and
+    the index. A ticket's page links to its records instead of embedding them."""
+    root = h / "archive"
+    stamps_path = root / ".stamps.json"
+    try:
+        stamps = json.loads(stamps_path.read_text())
+    except (OSError, ValueError):
+        stamps = {}
+    index = []
+    for p in home.projects(h):
+        st = p.read_state()
+        groups = by_ticket(read_meter(p))
+        for tid, trs in groups.items():
+            meta = Ticket(p, tid).read("meta.json") or {}
+            status = ticket_status(st, tid)
+            sig = json.dumps([LAYOUT, len(trs), trs[-1].get("ts"), status, meta.get("title"),
+                              (trs[-1].get("verdict") or {}).get("action")])
+            key = f"{p.name}/{tid}"
+            target = root / p.name / f"{tid}.html"
+            if stamps.get(key) != sig or not target.exists():
+                body = (f'<p class=back><a href="../index.html">← all tickets</a> · <a href="../../worklog.html">the log</a></p>'
+                        + ticket_section(p, tid, trs, st, files="link", base="../../"))
+                home.write_atomic(target, page(body, title=f"{tid} · Hearthwork", note=f"archive · {p.name}"))
+                stamps[key] = sig
+            first = min(ts(r) for r in trs)
+            index.append((first, p, tid, trs, st, meta, status))
+    index.sort(key=lambda x: x[0], reverse=True)
+    rows, month = [], None
+    for first, p, tid, trs, st, meta, status in index:
+        m = time.strftime("%B %Y", time.localtime(first)) if first else "undated"
+        if m != month:
+            rows.append(f"<h4 class=month>{esc(m)}</h4>")
+            month = m
+        row = compact_row(p, tid, trs, st, f"{p.name}/{tid}.html")
+        rows.append(row.replace('<a class=row ', f'<a class=row data-q="{esc((p.name + " " + tid + " " + (meta.get("title") or "")).lower())}" ', 1))
+    body = ('<p class=back><a href="../worklog.html">← the log</a></p>'
+            '<input id=filter class=filter placeholder="Find a ticket by id or title…" aria-label="find a ticket">'
+            + "".join(rows) +
+            "<script>var f=document.getElementById('filter');f.oninput=function(){var q=f.value.toLowerCase();"
+            "document.querySelectorAll('a.row').forEach(function(a){a.hidden=q&&a.dataset.q.indexOf(q)<0})}</script>")
+    home.write_atomic(root / "index.html", page(body, title="Archive · Hearthwork", note=f"archive · {len(index)} tickets"))
+    home.write_atomic(stamps_path, json.dumps(stamps))
+    return root / "index.html"
 
 
 def build(home_path=None):
     h = home_path or home.home_dir()
     path = h / "worklog.html"
     home.write_atomic(path, render(h))
+    archive(h)
     return path
 
 
@@ -311,7 +449,7 @@ TEMPLATE = """<!doctype html>
 <html lang=en><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width, initial-scale=1">
 {{REFRESH}}
-<title>Hearthwork Log</title>
+<title>{{TITLE}}</title>
 <style>
 :root{--bg:#f7f5f0;--panel:#fff;--ink:#22201c;--mute:#6f6a60;--line:#e4dfd4;--green:#2f8f5b;--amber:#c98a12;--red:#c2412d;--accent:#b5532a}
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#171513;--panel:#211e1b;--ink:#ece6dc;--mute:#9b9488;--line:#34302b;--green:#4fb37d;--amber:#e0a63a;--red:#e2614b;--accent:#e08a5a}}
@@ -335,6 +473,18 @@ h3{margin:0;font-size:16px}
 .cell{width:18px;height:18px;border-radius:4px;display:block}
 .cell.green,.unit.green .dot{background:var(--green)}.cell.amber,.unit.amber .dot{background:var(--amber)}.cell.red,.unit.red .dot{background:var(--red)}
 .next{font-size:13px;color:var(--mute);margin-top:4px}
+.files{display:flex;flex-direction:column;gap:2px}.filelink{font-size:13px;color:var(--accent);margin-right:12px}
+.more{display:inline-block;margin-top:10px;font-size:13px;color:var(--accent)}
+.archlink{font-size:13px;font-weight:400;color:var(--accent);margin-left:12px}
+.older{margin:18px 0}.older h4{font-size:13px;color:var(--mute);margin:0 0 6px;font-weight:600}
+a.row{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);text-decoration:none;margin:6px 0}
+a.row:hover{border-color:var(--accent)}a.row[hidden]{display:none}
+a.row .mode{color:var(--accent);font-size:12px;letter-spacing:.04em}
+.rtitle{flex:1;min-width:160px;color:var(--mute)}.rnums{font-size:12px;color:var(--mute);font-variant-numeric:tabular-nums}
+.older details summary{cursor:pointer;color:var(--accent);font-size:13px;margin:6px 0}
+.month{font-size:13px;color:var(--mute);margin:20px 0 4px}
+.back{font-size:13px}.back a{color:var(--accent)}
+.filter{width:100%;padding:9px 14px;border:1px solid var(--line);border-radius:20px;background:var(--panel);color:var(--ink);font:14px system-ui,sans-serif;margin:6px 0 4px}
 h3 .mode{color:var(--accent);letter-spacing:.04em;margin-left:6px;cursor:help;border-bottom:1px dotted currentColor;position:relative}
 h3 .mode:hover::after,h3 .mode:focus::after{content:attr(data-tip);position:absolute;left:0;top:calc(100% + 6px);z-index:3;width:max-content;max-width:min(360px,80vw);white-space:normal;font:400 12.5px/1.45 system-ui,sans-serif;letter-spacing:0;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 10px;box-shadow:0 6px 18px rgba(0,0,0,.12)}
 .steps{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:10px 0 2px}

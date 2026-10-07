@@ -152,6 +152,14 @@ report, git facts and verdict one click away, and what it all cost today, this w
 total. It is built by code from the records, never written by the model, and it refreshes
 itself while open.
 
+It stays small however long you run. The page shows every active or halted ticket and the
+last 20 units (`[log] recent_units` in config.toml), never cutting a chain in half; older
+tickets are one line each. Every ticket also has its own page under `archive/`, with an
+index you can filter, written once and rewritten only when the ticket changes. Nothing is
+deleted: the archive is another view of the same records. Measured on a generated history
+of 1,000 units over 200 tickets: the page builds in under half a second, `operator ui`
+serves 135 KB (reports load when you open them), and the largest ticket page is 17 KB.
+
 ## The spirit
 
 ```sh

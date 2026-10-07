@@ -45,6 +45,10 @@ execute = 3600
 judge = 900
 survey = 600
 
+[log]
+recent_units = 20              # the log page shows this many recent units; older tickets are one
+                               # line each, and every ticket has its own page under archive/
+
 [awake]
 enabled = true                 # hold off idle sleep while a unit runs or the spirit answers
 on_ac = false                  # macOS: also stay awake on mains power (caffeinate -s)

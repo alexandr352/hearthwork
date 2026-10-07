@@ -119,6 +119,15 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(HTTPStatus.OK, page, "text/html; charset=utf-8",
                              {"Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; "
                                                          "script-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:"})
+        if url.path == "/worklog.html":
+            self.send_response(HTTPStatus.SEE_OTHER)
+            self.send_header("Location", "/")
+            self.end_headers()
+            return
+        if url.path.startswith("/archive/") or url.path.startswith("/projects/"):
+            if not self.authed():
+                return self.send(HTTPStatus.FORBIDDEN, "open the link `operator ui` printed (it carries the key)")
+            return self.static(url.path)
         if url.path == "/api/stamp":
             if not self.authed(api=True):
                 return self.send(HTTPStatus.FORBIDDEN, "no")
@@ -160,6 +169,28 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/api/chat":
             return self.chat(str(body.get("message") or "").strip(), body.get("about"))
         return self.send(HTTPStatus.NOT_FOUND, "not found")
+
+    def static(self, path):
+        """An archive page, or one record of a unit. Nothing else under the home is served."""
+        import re as _re
+        m = _re.fullmatch(r"/archive/(?:index\.html|([a-z0-9][a-z0-9._-]{0,63})/([A-Za-z0-9][A-Za-z0-9._-]{0,63})\.html)", path)
+        if m:
+            f = self.h / path.lstrip("/")
+            ctype = "text/html; charset=utf-8"
+        else:
+            m = _re.fullmatch(r"/projects/([a-z0-9][a-z0-9._-]{0,63})/tickets/([A-Za-z0-9][A-Za-z0-9._-]{0,63})"
+                              r"/units/(\d{2,4})/([a-z]+\.md)", path)
+            if not m or m.group(4) not in worklog.FILE_NAMES:
+                return self.send(HTTPStatus.NOT_FOUND, "not found")
+            f = self.h / path.lstrip("/")
+            ctype = "text/plain; charset=utf-8"
+        try:
+            f = f.resolve()
+            f.relative_to(self.h.resolve())
+            data = f.read_bytes()
+        except (OSError, ValueError):
+            return self.send(HTTPStatus.NOT_FOUND, "not found")
+        return self.send(HTTPStatus.OK, data, ctype)
 
     # --- the chat --------------------------------------------------------------
 
@@ -369,6 +400,8 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')ecoBox.hidde
 ecoBox.addEventListener('change',function(e){var i=e.target,k=i.dataset.k,b={};b[k]=k==='cache'?(i.checked?'policy':'auto'):!i.checked;
   fetch('/api/economy',{method:'POST',headers:{'X-HW-Key':KEY,'Content-Type':'application/json'},body:JSON.stringify(b)}).then(function(r){return r.json()}).then(paintEco)});
 document.addEventListener('visibilitychange',function(){if(wantWake&&document.visibilityState==='visible'&&!wl)takeWake()});
+document.addEventListener('toggle',function(e){var d=e.target;if(!d.open||!d.dataset||!d.dataset.src||d.dataset.loaded)return;d.dataset.loaded='1';
+  fetch(d.dataset.src).then(function(r){return r.ok?r.text():Promise.reject(r.status)}).then(function(t){d.querySelector('pre').textContent=t}).catch(function(x){d.querySelector('pre').textContent='could not load ('+x+')'})},true);
 var last=null;setInterval(async function(){try{var r=await fetch('/api/stamp',{headers:{'X-HW-Key':KEY}});var s=(await r.json()).stamp;
   if(last!==null&&s!==last){var html=await (await fetch('/api/log',{headers:{'X-HW-Key':KEY}})).text();var doc=new DOMParser().parseFromString(html,'text/html');
     var open=[].slice.call(document.querySelectorAll('#log details[open]')).map(function(d){return d.id});var fresh=doc.getElementById('log');
