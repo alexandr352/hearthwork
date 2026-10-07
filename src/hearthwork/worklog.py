@@ -281,7 +281,19 @@ def mode_html(mode):
             f'data-tip="{esc(MODES.get(mode, ""))}">{esc(mode)}</span>')
 
 
-def ticket_section(p, tid, trs, st, ui=False, files="embed", base="", limit=None, archive_href=None):
+PHASE_WORD = {"planning": "the operator is planning it", "executing": "the executor is working",
+              "judging": "the operator is judging the report", "surveying": "reading the tree after a failed run"}
+
+
+def running_card(p, run):
+    started = run.get("started") or time.time()
+    return (f'<div class=runcard data-started="{started:.0f}"><span class=spin></span><b>unit {esc(run.get("unit"))}</b> '
+            f'<span class=chip>{esc(run.get("phase"))}</span> <span class=title>{esc(run.get("title") or "")}</span>'
+            f'<span class=did>{esc(PHASE_WORD.get(run.get("phase"), ""))} · '
+            f'<span class=elapsed>{(time.time() - started) / 60:.0f} min</span></span></div>')
+
+
+def ticket_section(p, tid, trs, st, ui=False, files="embed", base="", limit=None, archive_href=None, run=None):
     t = Ticket(p, tid)
     meta = t.read("meta.json") or {}
     last_v = next((r.get("verdict") for r in reversed(trs) if r.get("verdict")), None) or {}
@@ -292,8 +304,10 @@ def ticket_section(p, tid, trs, st, ui=False, files="embed", base="", limit=None
     chain_open = (t.read("chain.json") or {}).get("chain")
     strip = story(p, tid, shown, chain_open, status in ("active", "halted"))
     progress = f"{done} of {planned} units done" if planned else ""
-    nums = " · ".join(x for x in (progress, f"{len(trs)} run{'s' if len(trs) != 1 else ''}",
-                                 money(sum(r.get('cost_usd') or 0 for r in trs))) if x)
+    nums = " · ".join(x for x in (progress, f"{len(trs)} run{'s' if len(trs) != 1 else ''}" if trs else "no units yet",
+                                 money(sum(r.get('cost_usd') or 0 for r in trs)) if trs else "") if x)
+    if run and run.get("ticket") == tid:
+        status = "running"
     more = (f'<a class=more href="{esc(archive_href)}">{hidden} earlier unit{"s" if hidden != 1 else ""} '
             f'of this ticket are in its archive page →</a>') if hidden and archive_href else ""
     return f"""
@@ -304,6 +318,7 @@ def ticket_section(p, tid, trs, st, ui=False, files="embed", base="", limit=None
     <div class=strip>{strip}</div>
     {f'<div class=next>next: {esc(last_v.get("next"))}</div>' if last_v.get('next') and status != 'ready' else ''}
   </header>
+  {running_card(p, run) if run and run.get("ticket") == tid else ""}
   {''.join(unit_card(p, r, ui, files, base) for r in reversed(shown))}
   {more}
 </section>"""
@@ -346,13 +361,18 @@ def render(home_path=None, ui=False):
               (<code>operator chat</code>)</div>
               {f'<button class=ask data-ask="{esc(p.name)}|{esc(hl.get("ticket"))}|{esc(hl.get("unit") or "")}">talk it through here</button>' if ui else ''}</div>""")
         groups = by_ticket(rows)
-        order = sorted(groups, key=lambda k: max(ts(r) for r in groups[k]), reverse=True)
+        from .records import running as _running
+        run = _running(p)
+        for tid in {st.get("active_ticket"), (run or {}).get("ticket")}:
+            if tid and tid not in groups and Ticket(p, tid).exists():
+                groups[tid] = []
+        order = sorted(groups, key=lambda k: max((ts(r) for r in groups[k]), default=time.time()), reverse=True)
         full, older = [], []
         for tid in order:
             href = f"archive/{p.name}/{tid}.html"
-            if ticket_status(st, tid) in ("active", "halted") or (p.name, tid) in in_window:
+            if ticket_status(st, tid) in ("active", "halted") or (p.name, tid) in in_window or (run or {}).get("ticket") == tid:
                 full.append(ticket_section(p, tid, groups[tid], st, ui, "lazy" if ui else "embed",
-                                           limit=recent, archive_href=href))
+                                           limit=recent, archive_href=href, run=run))
             else:
                 older.append(compact_row(p, tid, groups[tid], st, href))
         older_html = ""
@@ -488,7 +508,12 @@ h3{margin:0;font-size:16px}
 .ticket{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin:12px 0}
 .ticket .sub{color:var(--mute)}.nums{color:var(--mute);font-size:13px;margin-top:2px}
 .badge{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:2px 7px;border-radius:99px;margin-left:6px;vertical-align:2px;border:1px solid var(--line);color:var(--mute)}
-.badge.active{color:var(--accent);border-color:var(--accent)}.badge.ready{color:var(--green);border-color:var(--green)}.badge.halted{color:var(--red);border-color:var(--red)}
+.badge.active,.badge.running{color:var(--accent);border-color:var(--accent)}
+.runcard{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 12px;margin:8px 0;border:1px dashed var(--accent);border-radius:10px;background:color-mix(in srgb,var(--accent) 6%,var(--panel))}
+.runcard .did{flex-basis:100%;font-size:13px;color:var(--mute);padding-left:22px}
+.spin{width:12px;height:12px;border-radius:50%;border:2px solid var(--accent);border-right-color:transparent;animation:spin 1s linear infinite;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none;border-right-color:var(--accent)}}.badge.ready{color:var(--green);border-color:var(--green)}.badge.halted{color:var(--red);border-color:var(--red)}
 .strip{margin:6px 0 4px}
 .cell{width:18px;height:18px;border-radius:4px;display:block}
 .cell.green,.unit.green .dot{background:var(--green)}.cell.amber,.unit.amber .dot{background:var(--amber)}.cell.red,.unit.red .dot{background:var(--red)}

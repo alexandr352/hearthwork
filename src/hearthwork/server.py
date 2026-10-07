@@ -33,7 +33,7 @@ def stamp(h):
     """Changes whenever any record the page shows changes."""
     m = 0.0
     for p in home.projects(h):
-        for f in (p.units_log, p.state_path, p.dir / "atlas.md"):
+        for f in (p.units_log, p.state_path, p.dir / "atlas.md", p.dir / "running.json", p.dir / ".lock"):
             try:
                 m = max(m, f.stat().st_mtime)
             except OSError:
@@ -47,6 +47,33 @@ def stamp(h):
 
 def chat_session_path(h):
     return spirit.spirit_dir(h) / "chat-session"
+
+
+def history_path(h):
+    return spirit.spirit_dir(h) / "chat-history.jsonl"
+
+
+HISTORY_KEEP = 300
+
+
+def history_add(h, kind, text):
+    """The conversation as the page shows it, so a reload brings it back."""
+    with open(history_path(h), "a", encoding="utf-8") as f:
+        f.write(json.dumps({"kind": kind, "text": text}) + "\n")
+
+
+def history_read(h):
+    try:
+        lines = history_path(h).read_text(encoding="utf-8").splitlines()[-HISTORY_KEEP:]
+    except OSError:
+        return []
+    out = []
+    for line in lines:
+        try:
+            out.append(json.loads(line))
+        except ValueError:
+            continue
+    return out
 
 
 def describe_tool(name, inp):
@@ -137,6 +164,10 @@ class Handler(BaseHTTPRequestHandler):
             if not self.authed(api=True):
                 return self.send(HTTPStatus.FORBIDDEN, "no")
             return self.send(HTTPStatus.OK, json.dumps({"stamp": stamp(self.h)}), "application/json")
+        if url.path == "/api/history":
+            if not self.authed(api=True):
+                return self.send(HTTPStatus.FORBIDDEN, "no")
+            return self.send(HTTPStatus.OK, json.dumps(history_read(self.h)), "application/json")
         if url.path == "/api/economy":
             if not self.authed(api=True):
                 return self.send(HTTPStatus.FORBIDDEN, "no")
@@ -160,10 +191,11 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             return self.send(HTTPStatus.BAD_REQUEST, "bad json")
         if url.path == "/api/new":
-            try:
-                chat_session_path(self.h).unlink()
-            except FileNotFoundError:
-                pass
+            for f in (chat_session_path(self.h), history_path(self.h)):
+                try:
+                    f.unlink()
+                except FileNotFoundError:
+                    pass
             return self.send(HTTPStatus.OK, '{"ok":true}', "application/json")
         if url.path == "/api/economy":
             try:
@@ -252,7 +284,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.emit({"type": "error", "text": f"the Claude Code CLI was not found: {bin_}"})
         p.stdin.write(prompt)
         p.stdin.close()
+        history_add(h, "me", message)
         final = None
+        said = ""
         for line in p.stdout:
             try:
                 ev = json.loads(line)
@@ -263,14 +297,22 @@ class Handler(BaseHTTPRequestHandler):
                 e = ev.get("event") or {}
                 d = e.get("delta") or {}
                 if e.get("type") == "content_block_delta" and d.get("type") == "text_delta":
+                    said += d.get("text", "")
                     self.emit({"type": "text", "text": d.get("text", "")})
             elif t == "assistant":
                 for block in (ev.get("message") or {}).get("content") or []:
                     if block.get("type") == "tool_use":
-                        self.emit({"type": "tool", "text": describe_tool(block.get("name"), block.get("input"))})
+                        if said.strip():
+                            history_add(h, "spirit", said)
+                            said = ""
+                        line = describe_tool(block.get("name"), block.get("input"))
+                        history_add(h, "tool", line)
+                        self.emit({"type": "tool", "text": line})
             elif t == "result":
                 final = ev
         p.wait(timeout=30)
+        if said.strip():
+            history_add(h, "spirit", said)
         if final is None:
             err = (p.stderr.read() or "").strip()[:400]
             return self.emit({"type": "error", "text": err or f"the spirit exited with {p.returncode}"})
@@ -286,6 +328,7 @@ class Handler(BaseHTTPRequestHandler):
             f.write(json.dumps(rec) + "\n")
         if final.get("is_error"):
             self.emit({"type": "error", "text": str(final.get("result"))[:400]})
+        history_add(h, "meta", f"${(cost or 0):.3f} · {rec['seconds']}s")
         self.emit({"type": "done", "cost_usd": cost, "seconds": rec["seconds"]})
 
 
@@ -345,6 +388,8 @@ body{padding-right:400px}@media(max-width:900px){body{padding-right:0}}
 .msg.sys{color:var(--mute);font-size:13px}
 .msg.md{white-space:normal}.msg.md p{margin:0 0 8px}.msg.md ul,.msg.md ol{margin:0 0 8px;padding-left:20px}.msg.md li{margin:2px 0}
 .msg.md code{font:12.5px ui-monospace,Menlo,monospace;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+.mdpre{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 8px;margin:4px 0 8px;overflow-x:auto;white-space:pre}
+.mdpre code{border:0;padding:0;background:none}
 table.md{border-collapse:collapse;font-size:12.5px;margin:4px 0 8px;width:100%}table.md th,table.md td{border-bottom:1px solid var(--line);padding:4px 6px;text-align:left}
 table.md th{color:var(--mute);font-weight:600}.msg.err{color:var(--red)}
 .tool{font:12px ui-monospace,Menlo,monospace;color:var(--mute);border-left:2px solid var(--line);padding-left:8px;white-space:pre-wrap;word-break:break-all}
@@ -376,6 +421,8 @@ function hwMarkdown(src){
   function inline(t){return esc(t).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>').replace(/(^|[\s(])\*([^*\s][^*]*)\*(?=[\s).,;:!?]|$)/g,'$1<i>$2</i>')}
   var out=[],lines=src.replace(/\r/g,'').split('\n'),i=0;
   while(i<lines.length){var l=lines[i];
+    if(/^\s*```/.test(l)){var code=[];i++;while(i<lines.length&&!/^\s*```/.test(lines[i])){code.push(lines[i]);i++}i++;
+      out.push('<pre class=mdpre><code>'+esc(code.join('\n'))+'</code></pre>');continue}
     if(/^\s*\|/.test(l)){var rows=[];while(i<lines.length&&/^\s*\|/.test(lines[i])){rows.push(lines[i]);i++}
       var cells=function(r){return r.trim().replace(/^\||\|$/g,'').split('|').map(function(c){return c.trim()})};
       var body=rows.filter(function(r){return !/^\s*\|[\s:|-]+\|\s*$/.test(r)});
@@ -419,6 +466,12 @@ form.onsubmit=async function(e){e.preventDefault();var text=input.value.trim();i
         log.scrollTop=log.scrollHeight;});}
     if(!got&&out.textContent==='…')out.remove();
   }catch(err){add('msg err',String(err))}finally{btn.disabled=false;input.focus()}};
+fetch('/api/history',{headers:{'X-HW-Key':KEY}}).then(function(r){return r.json()}).then(function(items){
+  if(!items.length)return;items.forEach(function(m){
+    if(m.kind==='me')add('msg me',m.text);else if(m.kind==='tool')add('tool',m.text);else if(m.kind==='meta')add('meta-line',m.text);
+    else{var d=add('msg md','');d.innerHTML=hwMarkdown(m.text)}});log.scrollTop=log.scrollHeight}).catch(function(){});
+setInterval(function(){document.querySelectorAll('.runcard[data-started]').forEach(function(c){var e=c.querySelector('.elapsed');
+  if(e)e.textContent=Math.max(0,Math.round((Date.now()/1000-Number(c.dataset.started))/60))+' min'})},20000);
 var ecoBox=document.getElementById('eco'),lastEco=null,wl=null,wantWake=false;
 function ecoBtn(){return document.getElementById('eco-btn')}
 function paintEco(d){if(d)lastEco=d;d=lastEco;if(!d)return;ecoBox.querySelectorAll('input').forEach(function(i){var k=i.dataset.k;i.checked=k==='cache'?d.economy.cache==='policy':!d.economy[k]});

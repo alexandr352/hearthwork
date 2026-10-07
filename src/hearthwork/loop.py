@@ -14,12 +14,13 @@ what the tree holds, and the operator judges on that instead of on a one-line fa
 """
 
 import json
+import os
 import time
 import uuid
 from dataclasses import dataclass, field
 
 from . import claude, contract, economy, fence, gitinfo
-from .home import doctrine
+from .home import doctrine, write_atomic
 from .records import Lock, Ticket, meter, now_iso, write_unit_file
 
 RESUME_PROMPT = (
@@ -197,6 +198,20 @@ class Loop:
         """One whole unit with a headless executor (`operator run`)."""
         return self._wrapped(self._unit)
 
+    def progress(self, t, n, phase, title=None):
+        """The running record the page and `operator next` read while a unit is in flight."""
+        path = self.p.dir / "running.json"
+        cur = {}
+        try:
+            cur = json.loads(path.read_text())
+        except (OSError, ValueError):
+            pass
+        now = time.time()
+        rec = {"ticket": t.id, "unit": n, "phase": phase, "title": title or cur.get("title"),
+               "started": cur.get("started") if cur.get("unit") == n else now, "phase_started": now,
+               "pid": os.getpid()}
+        write_atomic(path, json.dumps(rec) + "\n")
+
     def _wrapped(self, body, *args):
         st = self.p.read_state()
         if st.get("halted"):
@@ -218,6 +233,10 @@ class Loop:
         try:
             out = body(t, rec, *args)
         finally:
+            try:
+                (self.p.dir / "running.json").unlink()
+            except FileNotFoundError:
+                pass
             lock.release()
         rec["seconds"] = round(time.time() - t0, 1)
         rec["cost_usd"] = round(sum(c.get("cost_usd") or 0 for calls in rec["phases"].values() for c in calls), 6)
@@ -295,6 +314,7 @@ class Loop:
             rec["unit"] = n = pending["unit"]
             rec["recovered"] = "judge-pending"
             self.log(f"{t.id} unit {n}: judging the report a previous run could not")
+            self.progress(t, n, "judging")
             return self._judge(t, rec, n, pending)
 
         resume = t.read("resume.json")
@@ -307,6 +327,7 @@ class Loop:
             if int(resume.get("attempts") or 0) < RESUME_ATTEMPTS:
                 rec["recovered"] = "resume"
                 self.log(f"{t.id} unit {n}: resuming the executor session after a usage limit")
+                self.progress(t, n, "executing", plan.get("title"))
                 return self._execute(t, rec, n, plan, resume=resume)
             self.log(f"{t.id} unit {n}: resumed {RESUME_ATTEMPTS} times without finishing; surveying the tree")
             t.clear("resume.json")
@@ -333,6 +354,7 @@ class Loop:
         except Exception as e:  # facts are evidence, never a gate
             prompt += f"\nREPOSITORY FACTS AT PLAN: unreadable ({e})\n"
         self.log(f"{t.id} unit {n}: planning")
+        self.progress(t, n, "planning")
         plan, stop = self._ask_operator(
             t, prompt, "plan", lambda a: contract.check_plan(a, n, chain and chain["chain"]), "plan", rec)
         if stop:
@@ -353,6 +375,7 @@ class Loop:
     def _execute(self, t, rec, n, plan, resume=None):
         before = resume["before"] if resume else gitinfo.snapshot(self.p.repo)
         self.log(f"{t.id} unit {n}: executing — {plan['title']}")
+        self.progress(t, n, "executing", plan["title"])
         if resume:
             res = self.executor_call(RESUME_PROMPT, "execute-resume", self.models["executor"],
                                      self.timeouts["execute"], resume=resume["session_id"])
@@ -374,6 +397,7 @@ class Loop:
         survey_path = None
         if report is None:
             self.log(f"{t.id} unit {n}: the executor returned no report ({died}); surveying the tree")
+            self.progress(t, n, "surveying")
             sv = self.executor_call(SURVEY_PROMPT, "survey", self.models["survey"], self.timeouts["survey"],
                                     read_only=True)
             rec["phases"].setdefault("survey", []).append(sv.record())
@@ -399,6 +423,7 @@ class Loop:
                   + (f"SURVEY: {rel}/survey.md\n" if pending.get("survey") else "")
                   + "\n" + facts + "\n")
         self.log(f"{t.id} unit {n}: judging")
+        self.progress(t, n, "judging")
         verdict, stop = self._ask_operator(t, prompt, "judge", contract.check_verdict, "judge", rec)
         if stop:
             return stop

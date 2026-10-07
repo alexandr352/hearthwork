@@ -74,6 +74,21 @@ class Ticket:
         self.clear("session")
 
 
+def running(project):
+    """The unit in flight on a project, or None. A record whose process is gone is stale."""
+    try:
+        rec = json.loads((Path(project.dir) / "running.json").read_text())
+    except (OSError, ValueError):
+        return None
+    try:
+        os.kill(int(rec.get("pid")), 0)
+    except PermissionError:
+        return rec  # alive, owned by another user
+    except (OSError, TypeError, ValueError):
+        return None
+    return rec
+
+
 def write_unit_file(ticket, n, name, text):
     d = ticket.unit_dir(n)
     d.mkdir(parents=True, exist_ok=True)

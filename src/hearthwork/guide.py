@@ -3,6 +3,7 @@ the page's banner and the spirit."""
 
 import os
 import subprocess
+import time
 from pathlib import Path
 
 from . import home
@@ -25,6 +26,16 @@ def next_step(project_name=None, h=None):
                 "ask": "I want to add a project. Which repositories can you find on this machine?",
                 "project": None}
     from . import atlas
+    from .records import running
+    for p in projects:
+        r = running(p)
+        if r:
+            mins = (time.time() - (r.get("started") or time.time())) / 60
+            return {"key": "running", "title": f"Unit {r['unit']} of {r['ticket']} is running: {r.get('phase')}",
+                    "why": f"{r.get('title') or 'the operator is planning it'} · {mins:.0f} min so far. "
+                           "The page updates as it goes; nothing to do until it is judged.",
+                    "command": f"operator status -p {p.name}",
+                    "ask": "What is the running unit doing?", "project": p.name}
     for p in projects:
         st = p.read_state()
         if st.get("halted"):

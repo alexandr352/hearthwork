@@ -71,6 +71,9 @@ if prompt.startswith("STATE SURVEY"):
 if prompt.startswith("Your session was interrupted"):
     envelope("STATUS: success\nFILES CHANGED:\ntotal.txt\n(resumed and finished)")
 # the executor
+if (state / "slow-exec").exists():
+    import time
+    time.sleep(3)
 if flag("exec-wall"):
     envelope("You've hit your session limit · resets 3pm", is_error=True, code=1)
 if flag("exec-crash"):

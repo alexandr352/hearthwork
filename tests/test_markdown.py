@@ -45,6 +45,11 @@ class ChatMarkdown(unittest.TestCase):
         self.assertNotIn("---", h, "the separator row is not a row")
         self.assertIn("<ol><li>first</li>", h)
 
+    def test_fenced_code(self):
+        h = self.render("Run this:\n\n```\noperator atlas answer 2 \"<x>\"\n```\n\nthen reload.")
+        self.assertIn("<pre class=mdpre><code>operator atlas answer 2 \"&lt;x&gt;\"</code></pre>", h)
+        self.assertNotIn("```", h)
+
     def test_escapes_before_formatting(self):
         self.assertEqual(self.render("<img src=x onerror=alert(1)>"), "<p>&lt;img src=x onerror=alert(1)&gt;</p>")
         self.assertNotIn("<script", self.render("**<script>x</script>**"))
