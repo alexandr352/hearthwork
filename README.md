@@ -195,6 +195,13 @@ It comes from a rate-limit event in Claude Code's `stream-json` output, which wo
 but is not yet in Claude Code's documented output schema; if a version drops it, the tiles
 simply say there is no reading, and nothing else changes.
 
+A documented second source, if you use Claude Code interactively: `operator statusline
+--install` sets hearthwork as Claude Code's status line (your settings are backed up first,
+and a status line you already have is never replaced). Claude Code then hands it the
+documented `rate_limits` after each reply, which keeps the page fresh between hearthwork's own
+calls, and the bottom of your terminal reads something like
+`hearthwork · 5h 24% ↻18:30 · week 41% ↻Wed 05:00 · shop: T-12`.
+
 ## Stats
 
 `stats.html`, linked from the top of the log, is the whole history in numbers: totals

@@ -403,6 +403,15 @@ def cmd_usage(args):
     return 0
 
 
+def cmd_statusline(args):
+    from . import statusline
+    if args.install:
+        ok, msg = statusline.install()
+        out(msg)
+        return 0 if ok else 1
+    return statusline.run()
+
+
 def cmd_repos(args):
     from . import guide
     found = guide.find_repos()
@@ -547,6 +556,9 @@ def parser():
     with_project(sub.add_parser("next", help="the one next step, and how to do it")).set_defaults(fn=cmd_next)
     sub.add_parser("repos", help="the git repositories found on this machine").set_defaults(fn=cmd_repos)
     sub.add_parser("usage", help="your 5-hour session and week, from the newest Claude call").set_defaults(fn=cmd_usage)
+    sp = sub.add_parser("statusline", help="Claude Code's status line: shows your limits and the work, and keeps them fresh here")
+    sp.add_argument("--install", action="store_true", help="set it as Claude Code's status line (backs up your settings first)")
+    sp.set_defaults(fn=cmd_statusline)
     sp = sub.add_parser("economy", help="show or switch what Claude calls carry: MCP servers, your CLAUDE.md, the cache policy")
     sp.add_argument("--mcp", choices=["on", "off"])
     sp.add_argument("--claude-md", dest="claude_md", choices=["on", "off"])
