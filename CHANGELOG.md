@@ -1,8 +1,11 @@
 # Changelog
 
-To update: `~/.hearthwork-venv/bin/pip install --force-reinstall --no-deps git+https://github.com/alexandr352/hearthwork`,
+To update: `~/.hearthwork-venv/bin/pip install --upgrade git+https://github.com/alexandr352/hearthwork`,
 then `operator upgrade`, then restart `operator ui`. Versions marked **upgrade** change the doctrine
 the operator or the spirit reads, so `operator upgrade` matters for them.
+
+## 0.3.1
+- Updating is a plain `pip install --upgrade`: every release has a new version number.
 
 ## 0.3.0 (upgrade)
 - **The lab**: `operator lab`, one instrument for a project's tests and, if they need one, its

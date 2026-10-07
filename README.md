@@ -48,7 +48,7 @@ source ~/.zshrc
 operator doctor
 ```
 
-To update: `~/.hearthwork-venv/bin/pip install --force-reinstall --no-deps git+https://github.com/alexandr352/hearthwork`,
+To update: `~/.hearthwork-venv/bin/pip install --upgrade git+https://github.com/alexandr352/hearthwork`,
 then `operator upgrade`. What changed: [CHANGELOG.md](CHANGELOG.md).
 
 ## Start
