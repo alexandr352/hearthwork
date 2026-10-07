@@ -202,6 +202,9 @@ def shell_check(cmd, cwd, write_roots):
             if verb == "commit":
                 if any(a in ("--no-verify", "-n", "--amend") for a in rest):
                     return "commits never skip hooks and never amend"
+                if not POLICY.get("co_author") and re.search(r"co-authored-by\s*:", cmd, re.I):
+                    return ("no Co-Authored-By trailer: the commit carries the person's own git identity "
+                            "and nothing else; commit again without it")
                 if POLICY.get("_branch") in POLICY.get("protected", []):
                     return f"the checkout is on {POLICY['_branch']}, which is protected: create the ticket's branch first"
             if verb in ("checkout", "switch", "branch"):

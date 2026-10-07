@@ -101,12 +101,21 @@ class Loop:
             pass
         system = doctrine("executor", "EXECUTOR.md") + "\n\n# ATLAS\n\n" + atlas
         policy = {"mode": "executor", "repo": str(self.p.repo), "protected": self.p.protected,
-                  "network_commands": self.p.network_commands, "read_only": read_only}
+                  "network_commands": self.p.network_commands, "read_only": read_only,
+                  "co_author": self.p.co_author}
         return claude.run(
             claude_bin=self.bin, cwd=self.p.repo, prompt=prompt, model=model, timeout=timeout,
             label=label, costs=self.costs, resume=resume, tools=EXECUTOR_TOOLS,
-            setting_sources=["project", "local"], settings=self._settings(self.p.repo),
+            setting_sources=["project", "local"], settings=self._executor_settings(),
             append_system_prompt=system, env_extra=self._policy_env(policy))
+
+    def _executor_settings(self):
+        s = self._settings(self.p.repo)
+        if not self.p.co_author:
+            # Commits and pull requests carry the person's identity only.
+            s["attribution"] = {"commit": "", "pr": "", "commitTrailers": False}
+            s["includeCoAuthoredBy"] = False
+        return s
 
     # --- the operator's session ----------------------------------------------
 

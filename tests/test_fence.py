@@ -59,6 +59,8 @@ class ExecutorFence(unittest.TestCase):
         self.check("Bash", {"command": "git checkout -- cart.py"}, "allow")
         self.check("Bash", {"command": "git -C . reset --hard"}, "deny")
         self.check("Bash", {"command": "git commit -m 'Totals include tax'"}, "allow")
+        self.check("Bash", {"command": "git commit -m 'Totals include tax\n\nCo-Authored-By: Claude <noreply@anthropic.com>'"}, "deny")
+        self.check("Bash", {"command": "git commit -F - <<'EOF'\nTotals\n\nco-authored-by: Claude\nEOF"}, "deny")
 
     def test_shell_rules(self):
         self.check("Bash", {"command": "curl https://example.com"}, "deny")
@@ -85,6 +87,10 @@ class ExecutorFence(unittest.TestCase):
         self.check("Agent", {"prompt": "x", "run_in_background": True}, "deny")
         self.check("Agent", {"prompt": "x"}, "allow")
         self.check("mcp__anything__tool", {}, "deny")
+
+    def test_co_author_allowed_when_the_project_wants_it(self):
+        policy = dict(self.policy, co_author=True)
+        self.assertEqual(ask(policy, "Bash", {"command": "git commit -m 'x\n\nCo-Authored-By: Claude'"}, self.repo), "allow")
 
     def test_network_allowance(self):
         policy = dict(self.policy, network_commands=["npm ci"])

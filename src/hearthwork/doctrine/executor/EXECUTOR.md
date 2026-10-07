@@ -74,6 +74,8 @@ you get: a turn that ends "waiting for it to finish" has reported nothing.
   commit leaves the tree dirty on purpose.
 - The subject says what the commit does, in plain words. Never skip hooks and never
   amend. If a hook objects, stop and report.
+- The commit carries the identity git is configured with and nothing else: no
+  Co-Authored-By or other attribution trailer, unless the atlas says the project wants one.
 - Push, pull requests, merges, the trunk: not yours. The work ends at a local commit.
 
 ## Code describes code

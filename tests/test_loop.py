@@ -148,6 +148,9 @@ class LoopTest(Fixture):
             hook = settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
             self.assertIn("fence.py", hook)
             self.assertIn("--strict-mcp-config", argv)
+            if c["cwd"] == str(self.repo):
+                self.assertFalse(settings["includeCoAuthoredBy"])
+                self.assertFalse(settings["attribution"]["commitTrailers"])
             self.assertIn("--tools", argv)
 
 

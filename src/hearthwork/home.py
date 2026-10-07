@@ -63,6 +63,10 @@ trunk = "{trunk}"              # never committed to by the loop
 protected = ["{trunk}", "main", "master", "production"]
 branch_prefix = ""             # feature branches are <prefix><TICKET>-<slug>
 
+# Commits carry your own git identity (git config user.name / user.email) and nothing else.
+# Set true to let the executor add a "Co-Authored-By: Claude" trailer.
+co_author = false
+
 # Commands the executor may use that reach the network (package installs, a tracker CLI).
 # Everything else that reaches the network is refused by the fence.
 network_commands = []
@@ -103,6 +107,7 @@ class Project:
     protected: list = field(default_factory=list)
     branch_prefix: str = ""
     network_commands: list = field(default_factory=list)
+    co_author: bool = False
 
     @property
     def tickets(self):
@@ -148,6 +153,7 @@ def load_project(pdir):
         protected=list(data.get("protected") or [data.get("trunk", "main")]),
         branch_prefix=data.get("branch_prefix", ""),
         network_commands=list(data.get("network_commands") or []),
+        co_author=bool(data.get("co_author", False)),
     )
 
 
