@@ -269,7 +269,7 @@ class Loop:
             plan = json.loads((t.unit_dir(lease["unit"]) / "plan.json").read_text())
             return Outcome("lease", f"unit {lease['unit']} is open in your session", t.id, lease["unit"],
                            details={"lease": lease, "plan": plan})
-        if t.read("judge-pending.json") or t.read("resume.json"):
+        if t.read("judge-pending.json") or t.read("resume.json") or self._orphan(t):
             return self._unit(t, rec, recover_only=True)
         n, plan, stop = self._plan(t, rec)
         if stop:
@@ -333,10 +333,41 @@ class Loop:
             t.clear("resume.json")
             return self._after_execute(t, rec, n, plan, None, resume["before"], died="resume attempts exhausted")
 
+        orphan = self._orphan(t)
+        if orphan:
+            n, plan = orphan
+            rec["unit"], rec["kind"], rec["title"] = n, plan.get("kind"), plan.get("title")
+            rec["recovered"] = "orphan"
+            self.log(f"{t.id} unit {n}: its run ended before the unit was judged; surveying what it left")
+            try:
+                before = json.loads((t.unit_dir(n) / "before.json").read_text())
+            except (OSError, ValueError):
+                before = {}
+            return self._after_execute(t, rec, n, plan, None, before,
+                                       died="the run ended before this unit was judged (its process stopped)")
+
         n, plan, stop = self._plan(t, rec)
         if stop:
             return stop
         return self._execute(t, rec, n, plan)
+
+    def _orphan(self, t):
+        """The last unit that was planned to execute but never judged, with no recovery note:
+        its process died (a closed terminal, a restart). None when there is no such unit."""
+        units = t.units()
+        if not units:
+            return None
+        n = units[-1]
+        d = t.unit_dir(n)
+        if (d / "verdict.json").exists() or not (d / "plan.json").exists():
+            return None
+        try:
+            plan = json.loads((d / "plan.json").read_text())
+        except ValueError:
+            return None
+        if plan.get("action") != "execute":
+            return None
+        return n, plan
 
     def _plan(self, t, rec):
         """(unit, plan, None) for an approved plan, or (None, None, Outcome) when it stops."""
@@ -374,6 +405,7 @@ class Loop:
 
     def _execute(self, t, rec, n, plan, resume=None):
         before = resume["before"] if resume else gitinfo.snapshot(self.p.repo)
+        write_unit_file(t, n, "before.json", json.dumps(before))
         self.log(f"{t.id} unit {n}: executing — {plan['title']}")
         self.progress(t, n, "executing", plan["title"])
         if resume:

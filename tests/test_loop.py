@@ -101,6 +101,22 @@ class LoopTest(Fixture):
         logs = list((Path(os.environ["HEARTHWORK_HOME"]) / "runs").glob("*.log"))
         self.assertEqual(len(logs), 1)
 
+    def test_a_unit_whose_run_died_is_surveyed_and_judged(self):
+        self.run_units(1)  # unit 1 judged
+        import json as _j
+        d = self.t.unit_dir(2)
+        d.mkdir(parents=True)
+        (d / "plan.json").write_text(_j.dumps({"action": "execute", "unit": 2, "kind": "execution",
+                                              "title": "fix the total", "prompt": "x"}))
+        (self.repo / "total.txt").write_text("half an edit\n")
+        self.run_units(1)
+        self.assertTrue((d / "verdict.json").exists(), "the orphan is judged, not skipped")
+        self.assertTrue((d / "survey.md").exists())
+        self.assertIn("ended before this unit was judged", (d / "facts.md").read_text())
+        self.assertIn("tree: NOT clean", (d / "facts.md").read_text())
+        self.assertEqual(read_meter(self.p)[-1]["recovered"], "orphan")
+        self.assertFalse((self.t.unit_dir(3)).exists(), "no new unit was planned over it")
+
     def test_every_cost_is_the_call_not_the_session(self):
         self.run_units(1)
         rows = read_meter(self.p)
