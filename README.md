@@ -58,7 +58,13 @@ operator doctor
 `operator doctor` checks the CLI, git, your home folder, and whether the sleep guard works
 on your machine (on macOS: "sleep guard: caffeinate works").
 
-To update: `~/.hearthwork-venv/bin/pip install --upgrade git+https://github.com/alexandr352/hearthwork`.
+To update, then refresh the doctrine your projects and the spirit hold:
+
+```sh
+~/.hearthwork-venv/bin/pip install --force-reinstall --no-deps git+https://github.com/alexandr352/hearthwork
+operator upgrade
+```
+
 If you use pipx, `pipx install git+https://github.com/alexandr352/hearthwork` does the same.
 
 ## Use
