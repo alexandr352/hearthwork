@@ -450,7 +450,8 @@ def page(sections, banners="", stats="", ui=False, title="Hearthwork Log", note=
         .replace("{{REFRESH}}", "" if ui or note else '<meta http-equiv=refresh content=60>') \
         .replace("{{NOTE}}", note or ("live" if ui else "refreshes every minute")) \
         .replace("{{TITLE}}", esc(title)).replace("{{ROOT}}", root) \
-        .replace("{{TOPBTN}}", '<button id=eco-btn class=theme aria-haspopup=dialog title="what Claude calls carry">economy</button>'
+        .replace("{{TOPBTN}}", '<button id=repos-btn class=theme aria-haspopup=dialog title="the repositories\' own Claude Code settings">repository</button>'
+                 '<button id=eco-btn class=theme aria-haspopup=dialog title="what Claude calls carry">economy</button>'
                  '<button id=wake class=theme title="keep this screen on while the page is in front" hidden>screen on</button>' if ui else "")
 
 

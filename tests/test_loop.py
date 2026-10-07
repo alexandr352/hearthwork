@@ -144,6 +144,18 @@ class LoopTest(Fixture):
         ex = [c for c in self.calls() if c["cwd"] == str(self.repo)][-1]["argv"]
         self.assertEqual(ex[ex.index("--setting-sources") + 1], "local", "the repository's own settings and hooks are left out")
 
+    def test_repo_settings_written_where_the_loop_reads_them(self):
+        from hearthwork import home as _home
+        _home.set_repo_settings(self.p, False)
+        self.assertFalse(_home.resolve_project("demo").repo_settings)
+        _home.set_repo_settings(self.p, True)
+        self.assertTrue(_home.resolve_project("demo").repo_settings)
+        toml = self.p.dir / "project.toml"
+        toml.write_text("\n".join(l for l in toml.read_text().splitlines() if not l.startswith("repo_settings")) + "\n")
+        _home.set_repo_settings(self.p, False)
+        self.assertFalse(_home.resolve_project("demo").repo_settings, "added when the line is missing")
+        self.assertIn('id=repos-btn', __import__("hearthwork.worklog", fromlist=["x"]).render(ui=True))
+
     def test_repo_hooks_are_noticed(self):
         from hearthwork import home as _home
         (self.repo / ".claude").mkdir()

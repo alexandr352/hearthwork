@@ -195,6 +195,19 @@ def repo_hooks(repo):
     return out
 
 
+def set_repo_settings(project, use):
+    """Write repo_settings into the project's project.toml, the file the loop reads."""
+    import re as _re
+    path = Path(project.dir) / "project.toml"
+    text = path.read_text(encoding="utf-8")
+    line = f"repo_settings = {'true' if use else 'false'}"
+    if _re.search(r"(?m)^repo_settings\s*=", text):
+        text = _re.sub(r"(?m)^repo_settings\s*=.*$", line, text)
+    else:
+        text = text.rstrip("\n") + "\n" + line + "\n"
+    write_atomic(path, text)
+
+
 def projects(home=None):
     root = (home or home_dir()) / "projects"
     if not root.is_dir():
