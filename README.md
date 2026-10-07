@@ -191,6 +191,9 @@ serves 135 KB (reports load when you open them), and the largest ticket page is 
 Every Claude call hearthwork makes already reports your account's limits, so the page shows
 your 5-hour session and your week, with their reset times, at no extra cost (`operator usage`
 in the terminal). The reading is as fresh as the last call; a share past 80% turns red.
+It comes from a rate-limit event in Claude Code's `stream-json` output, which works today
+but is not yet in Claude Code's documented output schema; if a version drops it, the tiles
+simply say there is no reading, and nothing else changes.
 
 ## Stats
 
