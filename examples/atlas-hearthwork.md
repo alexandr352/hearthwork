@@ -1,59 +1,72 @@
-<!-- An example: the atlas `operator atlas` drafted of this very repository, in one read-only
-     Sonnet session costing $0.12, shown as drafted and not edited. A real one is then reviewed,
-     its questions answered, and kept current by the operator. -->
+<!-- An example: the atlas `operator atlas` drafted of this very repository (0.3.4), in one read-only
+     Sonnet session costing $0.10, shown as drafted and not edited. A real one is then reviewed, its
+     questions answered, its "The lab" lines taken with `operator lab config --from-atlas`, and kept
+     current by the operator. -->
 
 # Atlas
 
 ## What this is
-hearthwork is a plan → execute → judge loop for Claude Code. An "operator" session plans and judges, a fenced "executor" session does the work in a git checkout, and a "spirit" chat session sits beside them. It is pure-stdlib Python (3.11+, no dependencies) and ships a CLI named `operator`, a stdio MCP mode, and a local web UI that shows the work log. [README.md] [pyproject.toml:`requires-python`, `dependencies = []`, `[project.scripts]`]
+hearthwork is a plan → execute → judge loop for Claude Code. An "operator" plans units of work, a fenced "executor" does them in a checkout, and the operator judges the report against git facts. It also has a work-log web page, a chat "spirit", an MCP mode and a "lab" that runs tests and A/B proofs [README.md]. It is pure Python ≥3.10 with no runtime dependencies except `tomli` on <3.11, and its tests use `unittest` [pyproject.toml:11,20] [README.md].
 
 ## How to run things
-- Install: `pipx install git+https://github.com/alexandr352/hearthwork` or `pip install --user git+https://github.com/alexandr352/hearthwork`, then `operator doctor` [README.md]. A local editable install is not documented: `unknown`. A `.venv/` exists but is gitignored [ls -a, .gitignore].
-- Build: no build step. setuptools backend; the doctrine `.md` files are packaged as package-data [pyproject.toml].
-- Run one test file: `python -m unittest tests/test_fence.py` is `unknown`; no test command appears in any file I read. The tests are `unittest.TestCase` classes with `unittest.main()` at the bottom [tests/test_contract.py:2,28,80]. `python tests/test_contract.py` should therefore work, but I did not run it. Some tests insert `src` into `sys.path` themselves [tests/test_loop.py:12], and `test_fence.py` runs `src/hearthwork/fence.py` as a subprocess [tests/test_fence.py:9,15].
-- Run tests matching a name: `unknown`. With unittest the form would be `python tests/test_fence.py ExecutorFence.test_quoted_paths_do_not_hide`, but nothing in the repository states it. No pytest config exists [pyproject.toml].
-- Lint / format / typecheck: none configured. pyproject has no `[tool.*]` section besides setuptools, and there is no CI directory [pyproject.toml; ls -a, `.github` absent].
-- Must be running first: nothing for the tests. They use a throwaway `HEARTHWORK_HOME`, a temp git repo and `tests/fake_claude.py` in place of the real `claude` CLI [tests/test_loop.py:15-30, tests/fake_claude.py:1]. Real use needs git and a logged-in `claude` CLI [README.md "Install"].
+- Install: `python3 -m venv .venv && .venv/bin/pip install -e .` [README.md "Development"]
+- Build: unknown. It is a setuptools package with no build step for tests [pyproject.toml:1-3]. Doctrine `.md` files are shipped as package data [pyproject.toml:31-32].
+- Run one test file: `.venv/bin/python -m unittest tests/test_lab.py` [README.md]
+- Run tests matching a name: `.venv/bin/python -m unittest -k <pattern> tests/test_fence.py`. `-k` is listed in `python3 -m unittest --help`; the README does not show it.
+- Lint / format / typecheck: unknown. No linter, formatter or type-checker config exists [ls -a]. Some files carry `# noqa: E402` [tests/test_lab.py:16], so flake8 or ruff may be used informally. Ask the person.
+- Anything that must be running first: nothing. The tests use a stand-in for the Claude CLI, `tests/fake_claude.py`, and spend nothing [README.md]. The real tool needs `git` and a logged-in `claude` CLI [README.md "Install"]. The whole suite takes about a minute [README.md].
 
 ## Where things are
-- `src/hearthwork/`: the package [git ls-files]
-- `src/hearthwork/doctrine/`: markdown prompts per role, shipped as package-data: `executor/` (EXECUTOR.md, ATLAS-BUILD.md), `operator/` (CLAUDE.md, seeds, skill-* files), `spirit/` [git ls-files]
-- `tests/`: unittest tests and `fake_claude.py`, a stand-in for the Claude CLI [git ls-files]
-- Runtime data is not in the repo. It lives in `~/.hearthwork/` or `$HEARTHWORK_HOME` and holds `config.toml`, `projects/<name>/…` and the spirit's files [README.md "The home"; src/hearthwork/home.py:77].
+- `src/hearthwork/`: the package. The entry point is `operator = hearthwork.cli:main` [pyproject.toml:22-23] [ls src/].
+- `docs/`: commands.md, how-it-works.md, safety.md, mcp.md and images [git ls-files].
+- `examples/atlas-hearthwork.md`: an atlas previously drafted of this repo [README.md].
+- `tests/`: one `test_<module>.py` per module, plus `fake_claude.py` [git ls-files].
+- `CHANGELOG.md`: per-version notes. Versions marked "upgrade" change the doctrine [CHANGELOG.md:5-6].
 
-Where changes land:
-- `cli.py` (430 lines): argparse subcommands such as init, project, ticket, run, rule, status, doctor, atlas, ui, chat, mcp [src/hearthwork/cli.py].
-- `loop.py` (420 lines): the plan/execute/judge loop, retries and recovery. It builds the fence policy passed in `HEARTHWORK_FENCE_POLICY` [src/hearthwork/loop.py:86].
-- `fence.py` (404 lines): the PreToolUse hook, default-deny, with modes executor, read-only, operator and spirit. It is run as a standalone script [README.md "The fence"; tests/test_fence.py].
-- `contract.py`: checks that plans and verdicts have the required shape [tests/test_contract.py].
-- `home.py`, `records.py`: home and project layout, and the Ticket and unit records. `gitinfo.py` reads the git facts the judge sees.
-- `claude.py`: invokes the `claude` CLI. `mcp.py`: MCP stdio mode. `server.py` and `worklog.py`: the web UI and `worklog.html`. `atlas.py`: atlas drafting. `awake.py`: the sleep guard.
-- `doctrine/*.md`: edit these to change what each session is told.
+Where most changes land:
+- `src/hearthwork/cli.py` (802 lines): the argparse command surface [wc -l].
+- `src/hearthwork/loop.py` (600 lines): the plan/execute/judge loop [wc -l].
+- `src/hearthwork/lab.py` (1025 lines): `gate`, `ab`, `up`/`down`, `config`, restore [wc -l] [CHANGELOG.md].
+- `src/hearthwork/fence.py` (491 lines): the executor's permission hook, run as a script with the policy passed via `HEARTHWORK_FENCE_POLICY` [tests/test_fence.py:9-17].
+- `src/hearthwork/server.py` and `worklog.py`: the live page and work log [ls src/].
+- `src/hearthwork/doctrine/`: the markdown prompts that get installed: `executor/`, `operator/`, `spirit/`, `agents/`, `skills/` [git ls-files].
+- `contract.py`, `atlas.py`, `home.py`, `tickets.py`, `records.py`, `gitinfo.py`, `mcp.py`: the answer contracts, atlas handling, home directory and projects, tickets, records, git facts and MCP mode [ls src/].
 
 ## Conventions
-- Module docstring at the top of each file, short comments, no third-party dependencies [src/hearthwork/cli.py:1; pyproject.toml].
-- Tests are `unittest` classes in `tests/test_<module>.py`. Tests that need the loop build a temp home, repo and ticket and set the `HEARTHWORK_HOME`, `HEARTHWORK_NO_AWAKE` and `FAKE_STATE` env vars [tests/test_loop.py:15-30].
-- CLI errors go through `fail(msg)`, which prints `operator: <msg>` to stderr and returns exit code 2 [src/hearthwork/cli.py:19-21].
-- Files in the home are written atomically with `home.write_atomic` [src/hearthwork/cli.py:90].
-- Ticket IDs match `home.TICKET_ID`: letters, digits, `.`, `_` or `-` [src/hearthwork/cli.py:75-76].
-- Commits carry the person's own git identity, with no co-author trailer unless `co_author = true` is set in `project.toml` [git log f2a06c0]. Commit subjects are plain descriptive sentences with no prefix [git log].
-- Executor work goes on a ticket branch that the executor never pushes. The atlas-branch form is `unknown` (see questions). The only example seen is `T-1-work` in a fence test [tests/test_fence.py:25].
+- Tests use stdlib `unittest` classes. Shared fixtures are imported across test files, e.g. `from test_loop import Fixture` [tests/test_lab.py:16]. Test files insert `src` into `sys.path` [tests/test_lab.py:13-14].
+- Tests isolate state with a temp dir and `HEARTHWORK_HOME`, and set `HEARTHWORK_NO_AWAKE=1` [tests/test_lab.py:32-33]. They build throwaway git repos with `git init -b main` [tests/test_lab.py:36].
+- Tests drive the CLI as a subprocess: `python -m hearthwork lab -p shop ...` [tests/test_lab.py:56].
+- The code style is plain stdlib Python with module-level `from . import ...` [src/hearthwork/cli.py:11-12]. Formatting config is unknown.
+- Commits are plain subjects that start with the version, e.g. "0.3.4: lab up finds the server's address itself..." [git log]. Docs commits start with "Docs:" [git log]. Every release gets a new version number in `pyproject.toml`, and a `CHANGELOG.md` entry [CHANGELOG.md:23-24].
+- The tool's own ticket branches look like `T-1-work` [tests/test_fence.py:25]. Whether this repo's own work uses ticket branches is unknown. The trunk is `main` [git status].
+- Nothing is pushed by the tool; the person reviews and pushes [README.md].
+
+## The lab
+- lab test: `.venv/bin/python -m unittest {files}` [README.md]
+- lab lint: unknown
+- lab build: unknown
+- lab up: unknown
+- lab health: unknown
+- lab scratch: `tests/_scratch` [tests/ holds the tests, and the README runs them by path]
+- lab ab: worktree
+
+Writing a throwaway probe: use `unittest.TestCase`. For code that needs a project, copy the `LabFixture.setUp` setup from `tests/test_lab.py:28-46`. It makes a temp `HEARTHWORK_HOME`, a temp git repo, `home.init_home()` and `home.add_project(...)`. For fence behaviour, copy the `ask()` helper from `tests/test_fence.py:13-17`. Note that a scratch file under `tests/_scratch/` needs the same `sys.path.insert(0, ".../src")` as `tests/test_lab.py:13-14`. Run it by path with `-m unittest`, since the README shows only path-based runs. `unittest discover -s tests` would not enter a folder without `__init__.py`, so name the file explicitly.
 
 ## Traps
-- `fence.py` is a security-relevant, default-deny guard that tests execute as a subprocess. With no `HEARTHWORK_FENCE_POLICY` it denies everything [tests/test_fence.py:150 `NoPolicyDenies`; src/hearthwork/fence.py:361]. Its own README says it is a guard rail, not a sandbox [README.md].
-- `test_fence.py` uses the real `Path.home()` and asserts denial of paths like `~/.ssh` [tests/test_fence.py:10,36-39]. It reads paths but does not modify them.
-- Setting `HEARTHWORK_HOME` is what keeps tests from touching `~/.hearthwork`. New tests must set it [tests/test_loop.py:19].
-- The `doctrine/` markdown is prompt text that code reads at runtime. `operator upgrade` copies it into each project's operator directory (`home.refresh_doctrine`), so edits here don't reach existing projects until then [src/hearthwork/cli.py:64-68].
-- `HEARTHWORK_NO_AWAKE` disables the sleep guard (`caffeinate` or `systemd-inhibit`) [src/hearthwork/awake.py:26].
-- `__pycache__` holds `cpython-314` bytecode, so the local Python is 3.14. It is gitignored [ls; .gitignore].
-- The README says the fence is also what keeps executors from pushing. The git repo has a single branch, `main`, and no CI [git branch -a].
+- `HEARTHWORK_HOME` and `HEARTHWORK_NO_AWAKE` must be set in any test that touches the home directory. Without them a test could touch the real `~/.hearthwork` or keep the machine awake [tests/test_lab.py:32-33] [src/hearthwork/awake.py]. The default home location is unknown.
+- `fence.py` is invoked as a standalone script by Claude Code hooks, so it needs to work without package imports [tests/test_fence.py:15]. Check that before adding imports to it.
+- The doctrine `.md` files are package data that the installed tool reads. Edits there change the behaviour of every later session, and `operator upgrade` is needed after changes [pyproject.toml:31-32] [CHANGELOG.md:5-6].
+- `HEARTHWORK_AB_OUT` is an environment variable used by the A/B path [grep src tests]. Its role is unknown, so read `lab.py` before touching the A/B.
+- `git stash`, `git restore` and `git checkout -- <file>` are refused by the fence for executors. Baselines come from `operator lab ab` [tests/test_fence.py:59] [CHANGELOG.md].
+- The full suite takes about a minute [README.md]. Use per-file runs.
+- No CI workflow exists in the repo [ls -a: no .github].
 
 ## Questions for the person
-1. What is the exact command to run one test file and one test by name (unittest or pytest)? The repository states neither.
-2. How should ticket branches be named (for example `T-12-short-title`), and is `main` the trunk?
-3. Do you want a linter, formatter or type checker used (ruff, mypy)? None is configured, so should a session add none?
-4. Is an editable install (`pip install -e .` in `.venv`) the expected dev setup?
-5. Which areas are off limits or need extra care, such as `fence.py` and the doctrine prompts?
-6. Is any test slow or flaky? `test_loop.py` and `test_mcp.py` drive subprocesses and may be.
-7. Should commits ever carry a co-author trailer, or is the default of none right for this repository?
-8. Does `operator upgrade` need to be run after changing a doctrine file, or does something else handle that?
+1. Is there a linter, formatter or type-checker you want run (ruff, flake8, mypy)? None is configured.
+2. Should work on this repo use ticket branches such as `T-<n>-...`, or short-lived branches off `main`? Which form do you prefer?
+3. Do you want a `CHANGELOG.md` entry and a version bump in `pyproject.toml` on every change, or only for releases?
+4. Which test files are slow or flaky? `test_lab.py`, `test_running.py` and `test_loop.py` look heaviest, but I did not run them.
+5. Are any areas off limits, such as `fence.py` or the `doctrine/` prompts?
+6. Is `.venv/bin/python` the right interpreter for the lab, or should it use another path?
+7. What is the default `HEARTHWORK_HOME` location, and should tests ever run against it?
+8. May `tests/_scratch` be used as the throwaway probe folder?

@@ -3,7 +3,7 @@
 A plan → execute → judge loop for [Claude Code](https://claude.com/claude-code), with a
 home, a work log, and a spirit you can talk to.
 
-![The work log with the spirit's chat: a ticket's chain of units, what each one did and cost, your limits, and the spirit answering from the records](docs/screenshot.png)
+![The work log with the spirit's chat: a STABILIZATION ticket's chain (reproduce, fix, guard), the lab's state in the header, the guard proven by the lab's A/B, and the spirit answering from the records](docs/screenshot.png)
 
 You give it a ticket. An **operator** plans the work in small units and writes a prompt
 for each. An **executor** does the unit in your checkout, behind a fence. The operator
