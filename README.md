@@ -45,11 +45,21 @@ unattended. What made that work was not prompting. It was structure:
 Requires Python 3.10+, git, and the Claude Code CLI (`claude`) logged in. No dependencies on
 3.11 and newer; on 3.10, the small `tomli` package reads the config files.
 
+hearthwork lives in its own small environment, so nothing else is needed:
+
 ```sh
-pipx install git+https://github.com/alexandr352/hearthwork
-# or: pip install --user git+https://github.com/alexandr352/hearthwork
+python3 -m venv ~/.hearthwork-venv
+~/.hearthwork-venv/bin/pip install git+https://github.com/alexandr352/hearthwork
+echo 'export PATH="$HOME/.hearthwork-venv/bin:$PATH"' >> ~/.zshrc   # ~/.bashrc on bash
+source ~/.zshrc
 operator doctor
 ```
+
+`operator doctor` checks the CLI, git, your home folder, and whether the sleep guard works
+on your machine (on macOS: "sleep guard: caffeinate works").
+
+To update: `~/.hearthwork-venv/bin/pip install --upgrade git+https://github.com/alexandr352/hearthwork`.
+If you use pipx, `pipx install git+https://github.com/alexandr352/hearthwork` does the same.
 
 ## Use
 
