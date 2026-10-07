@@ -389,7 +389,7 @@ body{padding-right:400px}@media(max-width:900px){body{padding-right:0}}
 .msg.md{white-space:normal}.msg.md p{margin:0 0 8px}.msg.md ul,.msg.md ol{margin:0 0 8px;padding-left:20px}.msg.md li{margin:2px 0}
 .msg.md code{font:12.5px ui-monospace,Menlo,monospace;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:0 4px}
 .mdpre{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 8px;margin:4px 0 8px;overflow-x:auto;white-space:pre}
-.mdpre code{border:0;padding:0;background:none}
+.msg.md .mdpre code{border:0;padding:0;background:none;border-radius:0}
 table.md{border-collapse:collapse;font-size:12.5px;margin:4px 0 8px;width:100%}table.md th,table.md td{border-bottom:1px solid var(--line);padding:4px 6px;text-align:left}
 table.md th{color:var(--mute);font-weight:600}.msg.err{color:var(--red)}
 .tool{font:12px ui-monospace,Menlo,monospace;color:var(--mute);border-left:2px solid var(--line);padding-left:8px;white-space:pre-wrap;word-break:break-all}
