@@ -17,7 +17,10 @@
 import json
 import os
 import re
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10
+    import tomli as tomllib
 from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path

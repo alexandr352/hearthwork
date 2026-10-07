@@ -42,7 +42,8 @@ unattended. What made that work was not prompting. It was structure:
 
 ## Install
 
-Requires Python 3.11+, git, and the Claude Code CLI (`claude`) logged in.
+Requires Python 3.10+, git, and the Claude Code CLI (`claude`) logged in. No dependencies on
+3.11 and newer; on 3.10, the small `tomli` package reads the config files.
 
 ```sh
 pipx install git+https://github.com/alexandr352/hearthwork
