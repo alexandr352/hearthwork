@@ -67,6 +67,10 @@ branch_prefix = ""             # feature branches are <prefix><TICKET>-<slug>
 # Set true to let the executor add a "Co-Authored-By: Claude" trailer.
 co_author = false
 
+# MCP server tools the executor may call when your MCP servers are switched on
+# (operator economy --mcp on). Names as server__tool; a * matches, e.g. "postgres__*".
+mcp_allow = []
+
 # Commands the executor may use that reach the network (package installs, a tracker CLI).
 # Everything else that reaches the network is refused by the fence.
 network_commands = []
@@ -108,6 +112,7 @@ class Project:
     branch_prefix: str = ""
     network_commands: list = field(default_factory=list)
     co_author: bool = False
+    mcp_allow: list = field(default_factory=list)
 
     @property
     def tickets(self):
@@ -154,6 +159,7 @@ def load_project(pdir):
         branch_prefix=data.get("branch_prefix", ""),
         network_commands=list(data.get("network_commands") or []),
         co_author=bool(data.get("co_author", False)),
+        mcp_allow=list(data.get("mcp_allow") or []),
     )
 
 

@@ -14,7 +14,8 @@ totals = json.loads((state / "totals.json").read_text()) if (state / "totals.jso
 totals[sid] = round(totals.get(sid, 0) + 0.10, 4)
 (state / "totals.json").write_text(json.dumps(totals))
 with open(calls, "a") as f:
-    f.write(json.dumps({"cwd": os.getcwd(), "resume": resume, "prompt": prompt[:4000], "argv": argv}) + "\n")
+    f.write(json.dumps({"cwd": os.getcwd(), "resume": resume, "prompt": prompt[:4000], "argv": argv,
+                        "ttl": os.environ.get("CLAUDE_CODE_PROMPT_CACHE_TTL")}) + "\n")
 
 def envelope(result, is_error=False, code=0):
     print(json.dumps({"type": "result", "result": result, "is_error": is_error, "session_id": sid,

@@ -295,7 +295,8 @@ def render(home_path=None, ui=False):
         .replace("{{UPDATED}}", time.strftime("%Y-%m-%d %H:%M", time.localtime())) \
         .replace("{{REFRESH}}", "" if ui else '<meta http-equiv=refresh content=60>') \
         .replace("{{NOTE}}", "live" if ui else "refreshes every minute") \
-        .replace("{{TOPBTN}}", '<button id=wake class=theme title="keep this screen on while the page is in front" hidden>screen on</button>' if ui else "")
+        .replace("{{TOPBTN}}", '<button id=eco-btn class=theme aria-haspopup=dialog title="what Claude calls carry">economy</button>'
+                 '<button id=wake class=theme title="keep this screen on while the page is in front" hidden>screen on</button>' if ui else "")
     return page
 
 

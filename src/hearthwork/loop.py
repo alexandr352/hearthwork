@@ -18,7 +18,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 
-from . import claude, contract, fence, gitinfo
+from . import claude, contract, economy, fence, gitinfo
 from .home import doctrine
 from .records import Lock, Ticket, meter, now_iso, write_unit_file
 
@@ -73,6 +73,7 @@ class Loop:
         self.bin = cfg["claude"]["bin"]
         self.models = cfg["models"]
         self.timeouts = cfg["timeouts"]
+        self.eco = economy.load()
 
     # --- the two seats -------------------------------------------------------
 
@@ -91,7 +92,8 @@ class Loop:
             timeout=self.timeouts["judge" if label.startswith("judge") else "plan"], label=label,
             costs=self.costs, resume=resume, tools=OPERATOR_TOOLS, setting_sources=["project"],
             settings=self._settings(self.p.dir),
-            env_extra=self._policy_env({"mode": "operator", "own_dir": str(self.p.dir)}))
+            env_extra={**self._policy_env({"mode": "operator", "own_dir": str(self.p.dir)}),
+                       **economy.ttl_env("operator", self.eco)})
 
     def executor_call(self, prompt, label, model, timeout, resume=None, read_only=False, with_atlas=True):
         atlas = ""
@@ -101,14 +103,22 @@ class Loop:
         except OSError:
             pass
         system = doctrine("executor", "EXECUTOR.md") + "\n\n# ATLAS\n\n" + atlas
+        mcp = self.eco["mcp"] and not read_only
+        if self.eco["claude_md"] and not read_only:
+            own = economy.personal_claude_md()
+            if own.strip():
+                system += ("\n\n# THE PERSON'S OWN INSTRUCTIONS (their ~/.claude/CLAUDE.md; where they "
+                           "conflict with the executor's doctrine above, the doctrine wins)\n\n" + own)
         policy = {"mode": "executor", "repo": str(self.p.repo), "protected": self.p.protected,
                   "network_commands": self.p.network_commands, "read_only": read_only,
-                  "co_author": self.p.co_author}
+                  "co_author": self.p.co_author, "mcp_allow": self.p.mcp_allow if mcp else []}
+        role = label if label in ("survey", "atlas") else "executor"
         return claude.run(
             claude_bin=self.bin, cwd=self.p.repo, prompt=prompt, model=model, timeout=timeout,
             label=label, costs=self.costs, resume=resume, tools=EXECUTOR_TOOLS,
             setting_sources=["project", "local"], settings=self._executor_settings(),
-            append_system_prompt=system, env_extra=self._policy_env(policy))
+            append_system_prompt=system, strict_mcp=not mcp,
+            env_extra={**self._policy_env(policy), **economy.ttl_env(role, self.eco)})
 
     def _executor_settings(self):
         s = self._settings(self.p.repo)
@@ -125,7 +135,9 @@ class Loop:
         if not sid:
             return None
         age = claude.session_age_minutes(self.p.dir, sid)
-        warm = float(self.cfg["operator"]["warm_minutes"])
+        # The session is worth resuming while its prompt cache lives: the hour the policy
+        # sets, or the configured guess when the CLI decides.
+        warm = 58.0 if economy.ttl("operator", self.eco) == "1h" else float(self.cfg["operator"]["warm_minutes"])
         if age is not None and age > warm:
             self.log(f"operator session idle {age:.0f} min: waking cold from the files")
             t.drop_session()
@@ -199,7 +211,9 @@ class Loop:
         lock = Lock(self.p)
         if not lock.acquire():
             return Outcome("busy", "another run is working on this project", tid)
-        rec = {"ts": now_iso(), "project": self.p.name, "ticket": tid, "unit": None, "phases": {}}
+        self.eco = economy.load()
+        rec = {"ts": now_iso(), "project": self.p.name, "ticket": tid, "unit": None, "phases": {},
+               "economy": dict(self.eco)}
         t0 = time.time()
         try:
             out = body(t, rec, *args)

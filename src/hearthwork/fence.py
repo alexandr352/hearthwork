@@ -295,6 +295,15 @@ def check_executor(tool, ti, cwd):
         if reason:
             deny(tool, reason, ti.get("command", ""))
         allow(tool, "shell", ti.get("command", ""))
+    if tool.startswith("mcp__"):
+        allowed = POLICY.get("mcp_allow") or []
+        import fnmatch
+        name = tool[len("mcp__"):]
+        if allowed and any(fnmatch.fnmatchcase(name, pat) for pat in allowed):
+            allow(tool, "an MCP tool the project allows")
+        deny(tool, f"MCP tool {name} is not allowed: switch your MCP servers on (operator economy --mcp on) "
+                   "and name it in mcp_allow in project.toml" if not allowed else
+                   f"MCP tool {name} is not in this project's mcp_allow")
     if tool in ("Agent", "Task", "Skill"):
         if ti.get("run_in_background"):
             deny(tool, "sub-agents run in the foreground: this turn is the only one you get")

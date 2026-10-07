@@ -7,7 +7,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from . import claude, fence, home
+from . import claude, economy, fence, home
 
 TOOLS = ["Read", "Grep", "Glob", "Bash", "Edit", "Write", "Skill", "TodoWrite"]
 
@@ -33,6 +33,7 @@ def launch(h=None):
     env = dict(os.environ, HEARTHWORK_FENCE_POLICY=json.dumps(policy), HEARTHWORK_HOME=str(h))
     env["PATH"] = operator_bin_dir() + os.pathsep + env.get("PATH", "")
     env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] = "1"
+    env.update(economy.ttl_env("spirit", economy.load(h)))
     args = ["--settings", json.dumps(settings), "--setting-sources", "project", "--strict-mcp-config",
             "--tools", ",".join(TOOLS), "--add-dir", str(h)]
     for r in repos:

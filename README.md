@@ -183,6 +183,34 @@ warns if your settings disable hooks.
 common accidents; a determined process with a shell can get past any pattern check. For
 unattended runs, use a separate OS user that owns only the checkout.
 
+## Token economy
+
+Every call carries only what its role needs: no MCP servers, its own short tool list, its
+own doctrine (none of your personal CLAUDE.md files), and no background tasks. Three of
+these you can switch, from the page's **economy** panel or the command line:
+
+```sh
+operator economy                      # what is on
+operator economy --mcp on             # the executor gets your MCP servers
+operator economy --claude-md on       # your ~/.claude/CLAUDE.md joins the executor's instructions
+operator economy --cache auto         # let the CLI choose the prompt-cache lifetime
+operator economy --reset
+```
+
+- **MCP servers** (off by default). On, the executor gets your servers, but the fence lets
+  it call only the tools a project names in `mcp_allow` (`["postgres__query", "browser__*"]`):
+  MCP tools act where the fence cannot see. Reading sessions never get them. Measured with
+  four claude.ai connectors: +3,200 tokens on every executor call.
+- **Your CLAUDE.md** (off by default). Your own coding preferences, added to the executor's
+  instructions; hearthwork's doctrine wins where they conflict.
+- **Cache policy** (on by default). The operator and the spirit keep a 1-hour prompt cache,
+  because they resume after long gaps (the operator's plan and judgement are a whole unit
+  apart); the executor, survey and atlas a 5-minute one, which costs less to write. Off, the
+  CLI decides, and on an API key the operator would miss its cache on every judgement.
+
+Each unit's record says which switches were on, and each call the cache lifetime it ran
+with. A switch applies from the next unit; the first call after one misses the cache once.
+
 ## Cost
 
 Each unit is three or more Claude calls: a plan, the execution, a judgement. A small

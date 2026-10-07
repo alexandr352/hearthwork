@@ -31,6 +31,8 @@ class CallResult:
     session_id: str | None = None
     resumed: bool = False
     models_used: list = field(default_factory=list)
+    cache_ttl: str = "auto"
+    mcp: bool = False
     error: str | None = None
     walled: bool = False
 
@@ -151,10 +153,13 @@ class CostLedger:
 
 
 def run(*, claude_bin, cwd, prompt, model, timeout, label, costs, resume=None, tools=None,
-        settings=None, setting_sources=None, append_system_prompt=None, add_dirs=(), env_extra=None):
+        settings=None, setting_sources=None, append_system_prompt=None, add_dirs=(), env_extra=None,
+        strict_mcp=True):
     """One `claude --print` call. Never raises for a failed call: the result says why."""
     cmd = [claude_bin, "--print", "--model", model, "--output-format", "json",
-           "--dangerously-skip-permissions", "--strict-mcp-config"]
+           "--dangerously-skip-permissions"]
+    if strict_mcp:
+        cmd += ["--strict-mcp-config"]
     if tools is not None:
         cmd += ["--tools", ",".join(tools)]
     if setting_sources is not None:
@@ -172,7 +177,9 @@ def run(*, claude_bin, cwd, prompt, model, timeout, label, costs, resume=None, t
     # turn "waiting" has returned nothing. Background tasks are off for every call.
     env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] = "1"
     env.update(env_extra or {})
-    res = CallResult(text=None, label=label, model=model, resumed=bool(resume))
+    res = CallResult(text=None, label=label, model=model, resumed=bool(resume),
+                     cache_ttl=env.get("CLAUDE_CODE_PROMPT_CACHE_TTL") or "auto",
+                     mcp=not strict_mcp)
     t0 = time.time()
     try:
         p = subprocess.run(cmd, input=prompt, capture_output=True, text=True, cwd=str(cwd),

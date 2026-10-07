@@ -279,6 +279,43 @@ def cmd_atlas(args):
     return 0
 
 
+def onoff(v):
+    if v is None:
+        return None
+    if v in ("on", "off"):
+        return v == "on"
+    raise home.HomeError("say on or off")
+
+
+def cmd_economy(args):
+    from . import economy
+    changes = {}
+    if args.mcp is not None:
+        changes["mcp"] = onoff(args.mcp)
+    if args.claude_md is not None:
+        changes["claude_md"] = onoff(args.claude_md)
+    if args.cache is not None:
+        changes["cache"] = args.cache
+    if args.reset:
+        changes = dict(economy.DEFAULTS)
+    eco = economy.save(changes) if changes else economy.load()
+    out(f"token economy: {economy.label(eco)}")
+    out(f"  mcp        {'on ' if eco['mcp'] else 'off'}  " + (
+        "the executor gets your MCP servers; it may call only the tools a project names in mcp_allow"
+        if eco["mcp"] else "no MCP server reaches any call"))
+    out(f"  claude_md  {'on ' if eco['claude_md'] else 'off'}  " + (
+        "your ~/.claude/CLAUDE.md is added to the executor's instructions"
+        if eco["claude_md"] else "the executor carries hearthwork's doctrine and the repository's own CLAUDE.md"))
+    out(f"  cache      {eco['cache']:6}  " + (
+        "operator and spirit 1 h, executor, survey and atlas 5 min"
+        if eco["cache"] == "policy" else "the Claude Code CLI decides"))
+    if eco["mcp"]:
+        for p in home.projects():
+            out(f"  {p.name}: mcp_allow = {p.mcp_allow or '[] (nothing may be called yet)'}")
+    out("  fixed: each role's own tools, no background tasks, the fence")
+    return 0
+
+
 def cmd_mcp(args):
     from . import mcp
     return mcp.serve(args.project)
@@ -404,6 +441,12 @@ def parser():
     sp = sub.add_parser("chat", help="talk to the spirit")
     sp.add_argument("--model")
     sp.set_defaults(fn=cmd_chat)
+    sp = sub.add_parser("economy", help="show or switch what Claude calls carry: MCP servers, your CLAUDE.md, the cache policy")
+    sp.add_argument("--mcp", choices=["on", "off"])
+    sp.add_argument("--claude-md", dest="claude_md", choices=["on", "off"])
+    sp.add_argument("--cache", choices=["policy", "auto"])
+    sp.add_argument("--reset", action="store_true", help="back to full economy")
+    sp.set_defaults(fn=cmd_economy)
     sp = with_project(sub.add_parser("atlas", help="draft the project's atlas from the repository (one read-only session)"))
     sp.add_argument("--force", action="store_true", help="draft again over an edited atlas (the old one is kept)")
     sp.set_defaults(fn=cmd_atlas)

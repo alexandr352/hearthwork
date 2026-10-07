@@ -22,7 +22,7 @@ from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from . import awake, claude, home, spirit, worklog
+from . import awake, claude, economy, home, spirit, worklog
 
 KEY = secrets.token_urlsafe(24)
 CHAT_LOCK = threading.Lock()
@@ -123,6 +123,11 @@ class Handler(BaseHTTPRequestHandler):
             if not self.authed(api=True):
                 return self.send(HTTPStatus.FORBIDDEN, "no")
             return self.send(HTTPStatus.OK, json.dumps({"stamp": stamp(self.h)}), "application/json")
+        if url.path == "/api/economy":
+            if not self.authed(api=True):
+                return self.send(HTTPStatus.FORBIDDEN, "no")
+            eco = economy.load(self.h)
+            return self.send(HTTPStatus.OK, json.dumps({"economy": eco, "label": economy.label(eco)}), "application/json")
         if url.path == "/api/log":
             if not self.authed(api=True):
                 return self.send(HTTPStatus.FORBIDDEN, "no")
@@ -146,6 +151,12 @@ class Handler(BaseHTTPRequestHandler):
             except FileNotFoundError:
                 pass
             return self.send(HTTPStatus.OK, '{"ok":true}', "application/json")
+        if url.path == "/api/economy":
+            try:
+                eco = economy.save({k: body[k] for k in ("mcp", "claude_md", "cache") if k in body}, self.h)
+            except ValueError as e:
+                return self.send(HTTPStatus.BAD_REQUEST, str(e))
+            return self.send(HTTPStatus.OK, json.dumps({"economy": eco, "label": economy.label(eco)}), "application/json")
         if url.path == "/api/chat":
             return self.chat(str(body.get("message") or "").strip(), body.get("about"))
         return self.send(HTTPStatus.NOT_FOUND, "not found")
@@ -263,6 +274,14 @@ CHAT_UI = r"""
   <form id=chat-form><textarea id=chat-in rows=1 placeholder="Ask the spirit…"></textarea><button class=pill>Send</button></form>
 </aside>
 <button id=chat-open class=pill hidden>Spirit</button>
+<div id=eco hidden role=dialog aria-label="token economy">
+  <h4>Token economy <span id=eco-label></span></h4>
+  <p class=eco-note>What every Claude call carries. Changes apply from the next unit.</p>
+  <label><input type=checkbox data-k=mcp> <b>Your MCP servers</b><span>The executor gets your MCP servers, and may call only the tools a project names in <code>mcp_allow</code>. Off saves every server's tool list on every call.</span></label>
+  <label><input type=checkbox data-k=claude_md> <b>Your CLAUDE.md</b><span>Your ~/.claude/CLAUDE.md is added to the executor's instructions. Off: hearthwork's doctrine and the repository's own CLAUDE.md only.</span></label>
+  <label><input type=checkbox data-k=cache> <b>Cache policy</b><span>Operator and spirit keep a 1-hour prompt cache (they resume after long gaps); executor, survey and atlas a 5-minute one (cheaper). Off: the CLI decides.</span></label>
+  <p class=eco-note>Always: each role's own tools, no background tasks, the fence.</p>
+</div>
 <style>
 body{padding-right:400px}@media(max-width:900px){body{padding-right:0}}
 #chat{position:fixed;top:0;right:0;width:400px;height:100vh;background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;z-index:5}
@@ -285,6 +304,14 @@ body{padding-right:400px}@media(max-width:900px){body{padding-right:0}}
 .pill{height:40px;min-width:80px;padding:0 18px;border:0;border-radius:20px;background:var(--accent);color:#fff;font:600 14px/40px system-ui,sans-serif;cursor:pointer;box-sizing:border-box}
 .pill:disabled{opacity:.5;cursor:wait}
 #chat-open{position:fixed;right:16px;bottom:16px;z-index:5}
+#eco{position:fixed;top:64px;right:416px;width:min(380px,calc(100vw - 32px));background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;box-shadow:0 14px 36px rgba(0,0,0,.18);z-index:6}
+@media(max-width:900px){#eco{right:16px}}body.chat-hidden #eco{right:16px}
+#eco h4{margin:0 0 4px;font-size:15px}#eco-label{font-weight:400;color:var(--mute);font-size:12px}
+#eco label{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;align-items:start;margin:10px 0;cursor:pointer}
+#eco label input{grid-row:span 2;margin-top:3px;accent-color:var(--accent);width:16px;height:16px}
+#eco label span{grid-column:2;font-size:12.5px;color:var(--mute);line-height:1.45}
+.eco-note{font-size:12px;color:var(--mute);margin:4px 0}
+#eco[hidden]{display:none}
 button.ask{background:none;border:1px solid var(--accent);color:var(--accent);border-radius:6px;padding:2px 8px;margin:6px 0;cursor:pointer;font-size:12px}
 body.chat-hidden{padding-right:0}body.chat-hidden #chat{display:none}
 </style>
@@ -316,16 +343,27 @@ form.onsubmit=async function(e){e.preventDefault();var text=input.value.trim();i
         log.scrollTop=log.scrollHeight;});}
     if(!got&&out.textContent==='…')out.remove();
   }catch(err){add('msg err',String(err))}finally{btn.disabled=false;input.focus()}};
-var wl=null,wantWake=false,wb=document.getElementById('wake');
-wb.hidden=!('wakeLock' in navigator);
+var ecoBox=document.getElementById('eco'),lastEco=null,wl=null,wantWake=false;
+function ecoBtn(){return document.getElementById('eco-btn')}
+function paintEco(d){if(d)lastEco=d;d=lastEco;if(!d)return;ecoBox.querySelectorAll('input').forEach(function(i){var k=i.dataset.k;i.checked=k==='cache'?d.economy.cache==='policy':!!d.economy[k]});
+  document.getElementById('eco-label').textContent='· '+d.label;var b=ecoBtn();if(b)b.textContent='economy: '+d.label}
+function paintWake(){var b=document.getElementById('wake');if(!b)return;b.hidden=!('wakeLock' in navigator);b.textContent=wl?'screen on ✓':'screen on';b.style.color=wl?'var(--green)':''}
 async function takeWake(){try{wl=await navigator.wakeLock.request('screen');wl.addEventListener('release',function(){wl=null;paintWake()})}catch(e){wl=null}paintWake()}
-function paintWake(){wb.textContent=wl?'screen on ✓':'screen on';wb.style.color=wl?'var(--green)':''}
-wb.onclick=async function(){wantWake=!wantWake;if(wantWake)await takeWake();else if(wl){await wl.release();wl=null;paintWake()}};
+function paintTop(){paintEco();paintWake()}
+fetch('/api/economy',{headers:{'X-HW-Key':KEY}}).then(function(r){return r.json()}).then(paintEco).catch(function(){});
+paintWake();
+document.addEventListener('click',async function(e){
+  if(e.target.closest('#eco-btn')){e.stopPropagation();ecoBox.hidden=!ecoBox.hidden;return}
+  if(e.target.closest('#wake')){wantWake=!wantWake;if(wantWake)await takeWake();else if(wl){await wl.release();wl=null;paintWake()}return}
+  if(!ecoBox.hidden&&!ecoBox.contains(e.target))ecoBox.hidden=true});
+document.addEventListener('keydown',function(e){if(e.key==='Escape')ecoBox.hidden=true});
+ecoBox.addEventListener('change',function(e){var i=e.target,b={};b[i.dataset.k]=i.dataset.k==='cache'?(i.checked?'policy':'auto'):i.checked;
+  fetch('/api/economy',{method:'POST',headers:{'X-HW-Key':KEY,'Content-Type':'application/json'},body:JSON.stringify(b)}).then(function(r){return r.json()}).then(paintEco)});
 document.addEventListener('visibilitychange',function(){if(wantWake&&document.visibilityState==='visible'&&!wl)takeWake()});
 var last=null;setInterval(async function(){try{var r=await fetch('/api/stamp',{headers:{'X-HW-Key':KEY}});var s=(await r.json()).stamp;
   if(last!==null&&s!==last){var html=await (await fetch('/api/log',{headers:{'X-HW-Key':KEY}})).text();var doc=new DOMParser().parseFromString(html,'text/html');
     var open=[].slice.call(document.querySelectorAll('#log details[open]')).map(function(d){return d.id});var fresh=doc.getElementById('log');
-    if(fresh){document.getElementById('log').replaceWith(fresh);open.forEach(function(id){var d=id&&document.getElementById(id);if(d)d.open=true})}}
+    if(fresh){document.getElementById('log').replaceWith(fresh);open.forEach(function(id){var d=id&&document.getElementById(id);if(d)d.open=true});paintTop()}}
   last=s}catch(e){}},4000);
 })();
 </script>
