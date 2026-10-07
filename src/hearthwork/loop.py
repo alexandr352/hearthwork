@@ -93,10 +93,11 @@ class Loop:
             settings=self._settings(self.p.dir),
             env_extra=self._policy_env({"mode": "operator", "own_dir": str(self.p.dir)}))
 
-    def executor_call(self, prompt, label, model, timeout, resume=None, read_only=False):
+    def executor_call(self, prompt, label, model, timeout, resume=None, read_only=False, with_atlas=True):
         atlas = ""
         try:
-            atlas = (self.p.dir / "atlas.md").read_text(encoding="utf-8")
+            atlas = (self.p.dir / "atlas.md").read_text(encoding="utf-8") if with_atlas else \
+                "(none: you are drafting it, from the repository alone)"
         except OSError:
             pass
         system = doctrine("executor", "EXECUTOR.md") + "\n\n# ATLAS\n\n" + atlas

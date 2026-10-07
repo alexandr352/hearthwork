@@ -59,7 +59,8 @@ def build(project, cfg, force=False, log=print):
         timeout = max(int(cfg["timeouts"]["survey"]), 900)
         log(f"drafting the atlas of {project.repo} (read-only, {model})")
         calls = []
-        res = loop.executor_call(doctrine("executor", "ATLAS-BUILD.md"), "atlas", model, timeout, read_only=True)
+        res = loop.executor_call(doctrine("executor", "ATLAS-BUILD.md"), "atlas", model, timeout, read_only=True,
+                                 with_atlas=False)
         calls.append(res.record())
         draft = extract(res.text) if res.ok else None
         if res.ok and draft is None and res.session_id:
@@ -67,7 +68,7 @@ def build(project, cfg, force=False, log=print):
             res = loop.executor_call(
                 "DEVIATION: return the atlas again as EXACTLY the markdown the task gave: it starts with "
                 "'# Atlas' and has these headings in this order: " + ", ".join(HEADINGS) + ". Nothing before "
-                "or after it.", "atlas-fix", model, timeout, resume=res.session_id, read_only=True)
+                "or after it.", "atlas-fix", model, timeout, resume=res.session_id, read_only=True, with_atlas=False)
             calls.append(res.record())
             draft = extract(res.text) if res.ok else None
         cost = round(sum(c.get("cost_usd") or 0 for c in calls), 6)
