@@ -608,7 +608,11 @@ def cmd_lab(args):
         if verb == "config":
             c = lab.conf(p)
             if rest[:1] == ["--from-atlas"]:
-                keys = lab.from_atlas((p.dir / "atlas.md").read_text(encoding="utf-8"))
+                atlas_text = (p.dir / "atlas.md").read_text(encoding="utf-8")
+                keys = lab.from_atlas(atlas_text)
+                if keys and not lab.has_lab_section(atlas_text):
+                    out("  the atlas has no lab section (it was drafted before 0.3.0); the test command is taken")
+                    out("  from its \"Run one test file\" line, the example path replaced by {files}:")
                 if not keys:
                     return fail("the atlas proposes no lab commands (its \"## The lab\" section); set them: "
                                 "operator lab config test \"<command with {files}>\"")

@@ -4,6 +4,11 @@ To update: `~/.hearthwork-venv/bin/pip install --upgrade git+https://github.com/
 then `operator upgrade`, then restart `operator ui`. Versions marked **upgrade** change the doctrine
 the operator or the spirit reads, so `operator upgrade` matters for them.
 
+## 0.3.2
+- `operator lab config --from-atlas` works with an atlas drafted before 0.3.0: with no lab section, the
+  test command comes from its "Run one test file" line, the example path replaced by `{files}`. It says so;
+  check it with `operator lab gate <a test file>`.
+
 ## 0.3.1
 - Updating is a plain `pip install --upgrade`: every release has a new version number.
 

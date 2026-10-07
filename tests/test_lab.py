@@ -77,6 +77,20 @@ class Config(LabFixture):
         self.assertEqual(lab.from_atlas(atlas), {"test": "python3 -m unittest {files}", "scratch": "tests/",
                                                  "ab": "worktree"})
 
+    def test_an_older_atlas_falls_back_to_its_run_line(self):
+        old = ("# Atlas\n\n## How to run things\n- Install: `npm ci` [package.json]\n"
+               "- Run one test file: `npx vitest run src/cart/cart.spec.ts` [package.json:9]\n\n## Traps\nnone\n")
+        self.assertEqual(lab.from_atlas(old), {"test": "npx vitest run {files}"})
+        self.assertFalse(lab.has_lab_section(old))
+        self.assertEqual(lab.test_from_run_line("- Run one test file: python3 -m unittest tests/test_cart.py [README.md]"),
+                         "python3 -m unittest {files}")
+        self.assertEqual(lab.test_from_run_line("- Run one test file: pytest -q tests/test_a.py::test_b -x"),
+                         "pytest -q {files} -x")
+        self.assertIsNone(lab.test_from_run_line("- Run one test file: unknown, no runner found"))
+        self.assertIsNone(lab.test_from_run_line("- Run one test file: npm test"), "no path: nothing to replace")
+        both = old + "\n## The lab\n- lab test: `pytest {files}`\n"
+        self.assertEqual(lab.from_atlas(both)["test"], "pytest {files}", "a lab section wins")
+
     def test_a_scratch_folder_never_hides_tracked_files(self):
         (self.repo / "tests").mkdir()
         (self.repo / "tests" / "test_a.py").write_text("")

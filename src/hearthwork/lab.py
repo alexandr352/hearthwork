@@ -37,6 +37,7 @@ acting verb first recovers what an A/B that died left behind.
 """
 
 import fcntl
+import re
 import json
 import os
 import shlex
@@ -833,7 +834,37 @@ def from_atlas(atlas_text):
             val = _value(m.group(2), m.group(1))
             if val:
                 out[m.group(1)] = val
+    if "test" not in out:
+        test = test_from_run_line(atlas_text)
+        if test:
+            out["test"] = test
     return out
+
+
+def has_lab_section(atlas_text):
+    return any(line.strip().lower() == "## the lab" for line in atlas_text.splitlines())
+
+
+TEST_PATH = re.compile(r"^[\w./@:-]*[/.][\w./@:-]*$")
+
+
+def test_from_run_line(atlas_text):
+    """An atlas drafted before it had a lab section still names how to run one test file
+    ("- Run one test file: npx vitest run src/cart.spec.ts [package.json]"). Its example
+    path becomes {files}: `npx vitest run {files}`. None when no such line, or no path in it."""
+    m = re.search(r"(?im)^\s*[-*]\s*run one test file\s*:\s*(.+)$", atlas_text)
+    if not m:
+        return None
+    cmd = _value(m.group(1), "test")
+    if not cmd:
+        return None
+    words = cmd.split()
+    for i in range(len(words) - 1, 0, -1):
+        w = words[i].strip("'\"")
+        if not w.startswith("-") and TEST_PATH.match(w) and not re.match(r"^\d+(\.\d+)*$", w):
+            words[i] = "{files}"
+            return " ".join(words)
+    return None
 
 
 def check_scratch(p, rel):
