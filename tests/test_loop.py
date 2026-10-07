@@ -19,6 +19,7 @@ class LoopTest(unittest.TestCase):
         root = Path(self.tmp.name)
         self.state = root / "fake"
         os.environ["HEARTHWORK_HOME"] = str(root / "home")
+        os.environ["HEARTHWORK_NO_AWAKE"] = "1"
         os.environ["FAKE_STATE"] = str(self.state)
         self.repo = root / "repo"
         self.repo.mkdir()

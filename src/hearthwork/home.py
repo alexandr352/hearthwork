@@ -44,8 +44,12 @@ execute = 3600
 judge = 900
 survey = 600
 
+[awake]
+enabled = true                 # hold off idle sleep while a unit runs or the spirit answers
+on_ac = false                  # macOS: also stay awake on mains power (caffeinate -s)
+
 [operator]
-warm_minutes = 58              # resume the operator's session if it was used this recently;
+warm_minutes = 58             # resume the operator's session if it was used this recently;
                                # older sessions are dropped and it wakes from its files
 reconsider = 3                 # tries for a plan or verdict that breaks its contract
 """

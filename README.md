@@ -80,6 +80,16 @@ The ruling is kept with the ticket and binds every later unit.
 A second run while one is working exits quietly. A usage limit ends the run; the next one
 resumes the unit.
 
+### Laptops and sleep
+
+While a unit runs or the spirit answers, hearthwork holds the system's own sleep guard
+(`caffeinate -i` on macOS, `systemd-inhibit` on Linux), tied to its process: the machine
+stays awake for exactly as long as work is in flight, and the screen may still lock. A
+closed lid still sleeps a laptop. If it does sleep mid-unit, nothing is lost: the unit is
+surveyed and judged, or resumed. `[awake] on_ac = true` in config.toml also keeps a Mac
+awake on mains power, and the page's "screen on" button keeps the display lit while the
+tab is in front. `operator doctor` says whether the guard works on your machine.
+
 ## The home
 
 ```

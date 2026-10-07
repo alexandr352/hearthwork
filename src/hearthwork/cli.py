@@ -135,6 +135,12 @@ def cmd_run(args):
     p = project_of(args)
     cfg = home.load_config()
     loop = Loop(p, cfg, log=lambda m: out(f"[{now_iso()}] {m}"))
+    from .awake import from_config
+    with from_config(cfg, why=f"hearthwork is running units on {p.name}"):
+        return run_loop(loop, args)
+
+
+def run_loop(loop, args):
     spent, units = 0.0, 0
     while True:
         o = loop.run_unit()
@@ -285,6 +291,19 @@ def cmd_doctor(args):
             ok = False
     except (OSError, ValueError):
         pass
+    from .awake import from_config
+    import time
+    a = from_config(cfg)
+    if not a.enabled:
+        out("sleep guard: off (config [awake] enabled = false, or HEARTHWORK_NO_AWAKE)")
+    elif not a.command():
+        out("sleep guard: unavailable here (needs caffeinate on macOS or systemd-inhibit on Linux)")
+    else:
+        with a:
+            time.sleep(1)
+            works = a.holding
+        out(f"sleep guard: {a.command()[0]} " + ("works" if works else
+            "was refused (normal over SSH; a desktop session allows it)"))
     for p in home.projects():
         out(f"project {p.name}: {'ok' if (p.repo / '.git').exists() else 'REPOSITORY MISSING'} {p.repo}")
     return 0 if ok else 1

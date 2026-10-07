@@ -22,7 +22,7 @@ from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from . import claude, home, spirit, worklog
+from . import awake, claude, home, spirit, worklog
 
 KEY = secrets.token_urlsafe(24)
 CHAT_LOCK = threading.Lock()
@@ -63,6 +63,7 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "hearthwork"
     h = None
     cfg = None
+    awake = None
 
     def log_message(self, fmt, *args):
         pass
@@ -161,7 +162,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/x-ndjson")
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
-            self.stream_spirit(message, about)
+            with self.awake:
+                self.stream_spirit(message, about)
         finally:
             CHAT_LOCK.release()
 
@@ -238,6 +240,7 @@ def serve(port=0, open_browser=True):
     h = home.home_dir()
     Handler.h = h
     Handler.cfg = home.load_config(h)
+    Handler.awake = awake.from_config(Handler.cfg, why="the hearthwork spirit is answering")
     httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     link = f"http://127.0.0.1:{httpd.server_address[1]}/?k={KEY}"
     print(f"hearthwork is served on this machine only:\n\n  {link}\n\nCtrl-C stops it.", flush=True)
@@ -254,7 +257,7 @@ def serve(port=0, open_browser=True):
 
 CHAT_UI = r"""
 <aside id=chat>
-  <header><b>Spirit</b><span id=chat-cost></span><button id=chat-new title="start a new conversation">new</button><button id=chat-min title="hide">–</button></header>
+  <header><b>Spirit</b><span id=chat-cost></span><button id=wake title="keep this screen on while the page is in front">screen on</button><button id=chat-new title="start a new conversation">new</button><button id=chat-min title="hide">–</button></header>
   <div id=chat-log><div class="msg sys">Ask about any ticket or unit, a halt, what something cost, or what to do next. The spirit reads the records and acts only through <code>operator</code> commands.</div></div>
   <div id=chat-about hidden><span></span><button title="clear">×</button></div>
   <form id=chat-form><textarea id=chat-in rows=2 placeholder="Ask the spirit…"></textarea><button>send</button></form>
@@ -311,6 +314,12 @@ form.onsubmit=async function(e){e.preventDefault();var text=input.value.trim();i
         log.scrollTop=log.scrollHeight;});}
     if(!got&&out.textContent==='…')out.remove();
   }catch(err){add('msg err',String(err))}finally{btn.disabled=false;input.focus()}};
+var wl=null,wantWake=false,wb=document.getElementById('wake');
+if(!('wakeLock' in navigator))wb.hidden=true;
+async function takeWake(){try{wl=await navigator.wakeLock.request('screen');wl.addEventListener('release',function(){wl=null;paintWake()})}catch(e){wl=null}paintWake()}
+function paintWake(){wb.textContent=wl?'screen on ✓':'screen on';wb.style.color=wl?'var(--green)':''}
+wb.onclick=async function(){wantWake=!wantWake;if(wantWake)await takeWake();else if(wl){await wl.release();wl=null;paintWake()}};
+document.addEventListener('visibilitychange',function(){if(wantWake&&document.visibilityState==='visible'&&!wl)takeWake()});
 var last=null;setInterval(async function(){try{var r=await fetch('/api/stamp',{headers:{'X-HW-Key':KEY}});var s=(await r.json()).stamp;
   if(last!==null&&s!==last){var html=await (await fetch('/api/log',{headers:{'X-HW-Key':KEY}})).text();var doc=new DOMParser().parseFromString(html,'text/html');
     var open=[].slice.call(document.querySelectorAll('#log details[open]')).map(function(d){return d.id});var fresh=doc.getElementById('log');
