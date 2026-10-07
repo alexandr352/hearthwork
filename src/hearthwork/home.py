@@ -37,6 +37,7 @@ operator = "opus"              # plans and judges
 executor = "opus"              # does the work in your checkout
 survey = "sonnet"              # reads the tree when an executor died without a report
 spirit = "sonnet"              # the one you talk to (operator chat, operator ui)
+atlas = "sonnet"               # drafts a new project's atlas (operator atlas)
 
 [timeouts]                     # seconds
 plan = 1800

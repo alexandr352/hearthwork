@@ -44,8 +44,9 @@ def cmd_project_add(args):
     out(f"project {p.name}: {p.repo} (trunk {p.trunk})")
     out(f"  its records: {p.dir}")
     out(f"  edit {p.dir / 'project.toml'} to adjust protected branches and network commands")
-    out(f"  {p.dir / 'atlas.md'} is the map the executor reads: a few lines on how to build and test help a lot")
-    out("\nnext: operator ticket new <ID> --title \"...\" --file <ticket.md>")
+    out("\nnext: operator atlas      drafts the map every session reads first, from the repository itself")
+    out("                          (one read-only session; you review the result and answer its questions)")
+    out("then: operator ticket new <ID> --title \"...\" --file <ticket.md>")
     return 0
 
 
@@ -264,6 +265,20 @@ def cmd_chat(args):
     os.execvpe(claude, argv, env)
 
 
+def cmd_atlas(args):
+    from . import atlas
+    p = project_of(args)
+    try:
+        path, qs, cost = atlas.build(p, home.load_config(), force=args.force, log=lambda m: out(m))
+    except atlas.AtlasError as e:
+        return fail(str(e))
+    out(f"\natlas written: {path}  (${cost:.2f})")
+    if qs:
+        out("\nIt could not find these in the repository. Answer them in the file (or ask the spirit to help):\n")
+        out(qs)
+    return 0
+
+
 def cmd_mcp(args):
     from . import mcp
     return mcp.serve(args.project)
@@ -389,6 +404,9 @@ def parser():
     sp = sub.add_parser("chat", help="talk to the spirit")
     sp.add_argument("--model")
     sp.set_defaults(fn=cmd_chat)
+    sp = with_project(sub.add_parser("atlas", help="draft the project's atlas from the repository (one read-only session)"))
+    sp.add_argument("--force", action="store_true", help="draft again over an edited atlas (the old one is kept)")
+    sp.set_defaults(fn=cmd_atlas)
     sp = with_project(sub.add_parser("mcp", help="serve hearthwork to your Claude Code session (claude mcp add hearthwork -- operator mcp)"))
     sp.set_defaults(fn=cmd_mcp)
     sp = with_project(sub.add_parser("abandon", help="drop a unit left open by an MCP session"))

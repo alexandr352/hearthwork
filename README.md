@@ -53,6 +53,7 @@ operator doctor
 ```sh
 operator init
 operator project add shop --repo ~/code/shop
+operator atlas              # one read-only session drafts the project's map; review it
 operator ticket new T-12 --title "Totals include tax" --file ticket.md
 operator run                # one unit; see what it did
 operator run -n 0           # keep going until it is ready or needs you
@@ -120,7 +121,8 @@ tab is in front. `operator doctor` says whether the guard works on your machine.
   projects/<name>/                the operator's own directory for one repository
     project.toml                  repository, trunk, protected branches, network commands
     knowledge.md                  what it has learned about the repository, with sources
-    atlas.md                      the short map the executor reads first: edit it freely
+    atlas.md                      the short map the executor reads first: drafted by
+                                  `operator atlas` from the repository, then yours to edit
     units.jsonl                   one line per unit: phases, models, seconds, cost
     tickets/<ID>/
       ticket.md  rulings.md  plan.md  context-full.md
@@ -128,6 +130,17 @@ tab is in front. `operator doctor` says whether the guard works on your machine.
 ```
 
 Everything is plain files. Read them, grep them, keep them in git if you like.
+
+## The atlas
+
+Every session reads the atlas before the tree, so nobody re-learns the project. On a new
+project, `operator atlas` hands one read-only session (Sonnet, about $0.10 on a small
+repository) a fixed brief: read the README, the manifests, the repository's own CLAUDE.md,
+CI and test configuration, and return the map: how to install, build, test one file, lint;
+where changes land; conventions; traps; and, at the end, the questions only you can answer.
+Every fact names its source; nothing is guessed. You review it, answer the questions in the
+file, and from then on the operator keeps it current from what units learn. An atlas you
+have edited is only redrafted with `--force`, and the old one is kept.
 
 ## The work log
 

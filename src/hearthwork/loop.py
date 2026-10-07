@@ -93,7 +93,7 @@ class Loop:
             settings=self._settings(self.p.dir),
             env_extra=self._policy_env({"mode": "operator", "own_dir": str(self.p.dir)}))
 
-    def executor_call(self, prompt, label, model, timeout, resume=None):
+    def executor_call(self, prompt, label, model, timeout, resume=None, read_only=False):
         atlas = ""
         try:
             atlas = (self.p.dir / "atlas.md").read_text(encoding="utf-8")
@@ -101,7 +101,7 @@ class Loop:
             pass
         system = doctrine("executor", "EXECUTOR.md") + "\n\n# ATLAS\n\n" + atlas
         policy = {"mode": "executor", "repo": str(self.p.repo), "protected": self.p.protected,
-                  "network_commands": self.p.network_commands}
+                  "network_commands": self.p.network_commands, "read_only": read_only}
         return claude.run(
             claude_bin=self.bin, cwd=self.p.repo, prompt=prompt, model=model, timeout=timeout,
             label=label, costs=self.costs, resume=resume, tools=EXECUTOR_TOOLS,
@@ -347,7 +347,8 @@ class Loop:
         survey_path = None
         if report is None:
             self.log(f"{t.id} unit {n}: the executor returned no report ({died}); surveying the tree")
-            sv = self.executor_call(SURVEY_PROMPT, "survey", self.models["survey"], self.timeouts["survey"])
+            sv = self.executor_call(SURVEY_PROMPT, "survey", self.models["survey"], self.timeouts["survey"],
+                                    read_only=True)
             rec["phases"].setdefault("survey", []).append(sv.record())
             if sv.ok:
                 survey_path = write_unit_file(t, n, "survey.md", sv.text)

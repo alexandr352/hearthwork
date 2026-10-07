@@ -56,6 +56,12 @@ if prompt.startswith("PHASE: JUDGE"):
     action = "ticket-ready" if n >= 2 else "continue"
     envelope(json.dumps({"action": action, "unit_done": True, "units_done": n, "units_planned": 2,
                          "next": "unit 2: the fix" if n < 2 else "review and merge", "reason": f"unit {n} did what it said"}))
+if prompt.startswith("ATLAS BUILD") or prompt.startswith("DEVIATION: return the atlas"):
+    if flag("atlas-bad-once"):
+        envelope("I looked around; it is a small Python project.")
+    envelope("Here it is:\n# Atlas\n\n## What this is\nA tiny cart [README.md]\n\n## How to run things\n- Run one test file: "
+             "python3 -m unittest test_cart [README.md]\n\n## Where things are\n- total.txt\n\n## Conventions\n"
+             "unknown\n\n## Traps\nnone seen\n\n## Questions for the person\n1. Which tests are slow?\n")
 if prompt.startswith("STATE SURVEY"):
     envelope("SURVEY: branch T-1-total, tree has total.txt modified, change looks complete")
 if prompt.startswith("Your session was interrupted"):

@@ -92,6 +92,30 @@ class ExecutorFence(unittest.TestCase):
         self.assertEqual(ask(policy, "Bash", {"command": "curl x"}, self.repo), "deny")
 
 
+class ReadOnlyFence(unittest.TestCase):
+    def test_reader_changes_nothing(self):
+        with tempfile.TemporaryDirectory() as d:
+            repo = os.path.realpath(d)
+            pol = {"mode": "executor", "repo": repo, "protected": ["main"], "read_only": True}
+            for tool, ti, want in [
+                ("Read", {"file_path": f"{repo}/README.md"}, "allow"),
+                ("Bash", {"command": "git log --oneline -5"}, "allow"),
+                ("Bash", {"command": "ls src && cat package.json"}, "allow"),
+                ("Bash", {"command": "npm --version"}, "allow"),
+                ("Bash", {"command": f"cd {repo}; ls -a"}, "allow"),
+                ("Write", {"file_path": f"{repo}/a.txt", "content": "x"}, "deny"),
+                ("Edit", {"file_path": f"{repo}/a.txt"}, "deny"),
+                ("Bash", {"command": "echo x > a.txt"}, "deny"),
+                ("Bash", {"command": "git add -A"}, "deny"),
+                ("Bash", {"command": "git checkout -b x"}, "deny"),
+                ("Bash", {"command": "sed -i s/a/b/ a.txt"}, "deny"),
+                ("Bash", {"command": "rm a.txt"}, "deny"),
+                ("Bash", {"command": "npm run build"}, "deny"),
+                ("Bash", {"command": "make"}, "deny"),
+            ]:
+                self.assertEqual(ask(pol, tool, ti, repo), want, f"{tool} {ti}")
+
+
 class OperatorAndSpiritFence(unittest.TestCase):
     def test_operator_stays_home(self):
         with tempfile.TemporaryDirectory() as d:

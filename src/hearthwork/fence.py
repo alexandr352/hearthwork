@@ -44,6 +44,9 @@ PACKAGE_NET = re.compile(r"\b(npm|pnpm|yarn|bun)\s+(install|i|add|ci|update|upgr
 GIT_DENY = {"push", "config", "remote", "reset", "rebase", "filter-branch", "filter-repo", "update-ref",
             "symbolic-ref", "credential", "submodule", "gc", "prune", "daemon", "fetch", "pull", "clone",
             "merge", "send-email", "request-pull", "worktree", "replace", "notes"}
+READ_ONLY_DENY = {"rm", "mv", "cp", "touch", "mkdir", "rmdir", "ln", "chmod", "chown", "tee", "truncate", "dd",
+                  "install", "patch", "make", "npm", "pnpm", "yarn", "bun", "npx", "cargo", "go", "mvn", "gradle",
+                  "pip", "pip3", "uv", "poetry", "bundle", "gem", "composer", "docker", "podman"}
 GIT_READ = {"status", "diff", "log", "show", "blame", "ls-files", "rev-parse", "merge-base", "rev-list",
             "describe", "shortlog", "reflog", "cat-file", "ls-tree", "name-rev", "for-each-ref", "grep", "branch"}
 
@@ -212,7 +215,8 @@ def shell_check(cmd, cwd, write_roots):
         if secret(p):
             return f"{raw} holds secrets and is out of bounds"
         if p == HOME or under(p, [HOME]):
-            if not (under(p, write_roots) or under(p, roots("read_roots")) or home_cache(p)):
+            readable = write_roots + [os.path.realpath(POLICY["repo"])] + roots("read_roots")
+            if not (under(p, readable) or home_cache(p)):
                 return f"{raw} is outside the repository"
     for m in re.finditer(r"(?:^|[^<>&0-9])>>?\s*['\"]?([^\s'\";&|]+)", body):
         tgt = m.group(1)
@@ -231,9 +235,33 @@ def file_tool_path(ti):
     return ti.get("file_path") or ti.get("notebook_path") or ti.get("path")
 
 
+def read_only_shell(cmd, cwd):
+    """A reading session may look and list, never change: no writing tools, no builds,
+    only read-only git, no edits in place, and no redirect into the repository (even one
+    that lives under /tmp)."""
+    body = strip_heredocs(cmd)
+    repo = os.path.realpath(POLICY["repo"])
+    for m in re.finditer(r"(?:^|[^<>&0-9])>>?\s*['\"]?([^\s'\";&|]+)", body):
+        tgt = m.group(1)
+        if not tgt.startswith("/dev/") and (under(norm(tgt, cwd), [repo]) or not under(norm(tgt, cwd), ["/tmp"])):
+            return f"this session is read-only: it does not write {tgt}"
+    if re.search(r"(?:^|\s)(sed|perl)\s+(-\w*i|--in-place)", body):
+        return "this session is read-only: no edits in place"
+    for argv in segments(body):
+        name = os.path.basename(argv[0])
+        if name in READ_ONLY_DENY and not any(a in ("--version", "-v", "--help", "-h") for a in argv[1:2]):
+            return f"this session is read-only: {name} is not run here"
+        if name == "git":
+            verb, rest = git_verb(argv)
+            if verb not in GIT_READ or (verb == "branch" and any(a.startswith("-") and a not in ("-a", "-r", "--list", "-v", "-vv", "--show-current") for a in rest)):
+                return f"this session is read-only: git {verb} changes the repository"
+    return None
+
+
 def check_executor(tool, ti, cwd):
     repo = os.path.realpath(POLICY["repo"])
-    write_roots = [repo, "/tmp"]
+    read_only = bool(POLICY.get("read_only"))
+    write_roots = ["/tmp"] if read_only else [repo, "/tmp"]
     if tool in ("Read", "Grep", "Glob", "LS"):
         p = file_tool_path(ti)
         if not p:
@@ -245,6 +273,8 @@ def check_executor(tool, ti, cwd):
             deny(tool, f"{p} is outside the repository")
         allow(tool, "read")
     if tool in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
+        if read_only:
+            deny(tool, "this session is read-only: report what you found, change nothing")
         p = file_tool_path(ti)
         if not p:
             deny(tool, "a write without a path")
@@ -257,7 +287,8 @@ def check_executor(tool, ti, cwd):
             deny(tool, f"{p} holds secrets")
         allow(tool, "write inside the repository")
     if tool == "Bash":
-        reason = shell_check(ti.get("command", ""), cwd, write_roots)
+        reason = (read_only_shell(ti.get("command", ""), cwd) if read_only else None) or \
+            shell_check(ti.get("command", ""), cwd, write_roots)
         if reason:
             deny(tool, reason, ti.get("command", ""))
         allow(tool, "shell", ti.get("command", ""))
