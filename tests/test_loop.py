@@ -100,6 +100,10 @@ class LoopTest(Fixture):
         self.assertEqual([r["unit"] for r in rows], [1], "the background run did its one unit")
         logs = list((Path(os.environ["HEARTHWORK_HOME"]) / "runs").glob("*.log"))
         self.assertEqual(len(logs), 1)
+        for _ in range(200):  # let the background run finish writing before the folder goes
+            if "spent $" in logs[0].read_text():
+                break
+            _t.sleep(0.05)
 
     def test_a_unit_whose_run_died_is_surveyed_and_judged(self):
         self.run_units(1)  # unit 1 judged

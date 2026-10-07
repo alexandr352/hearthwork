@@ -60,6 +60,8 @@ with the Read tool, not `cat`; the paths below are relative to this directory. R
   the ticket's text, first write it, exactly as given, to `memory/tickets/<ID>.md` with the
   Write tool, then pass that file. Never put a ticket's text on the command line.
 - `operator ticket use <ID>` / `operator ticket list`.
+- `operator ticket rename <OLD> <NEW>` / `operator ticket title <ID> "<title>"`: fix a wrong
+  id or title. A rename carries the records, the state and unpushed branches with it.
 - `operator rule "<the person's answer>"`: record the person's ruling on a halt and
   lift the halt. Only with the person's own words, and only when they decided.
 - `operator halt "<reason>"` / `operator resume`.

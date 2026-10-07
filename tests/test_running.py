@@ -45,6 +45,12 @@ class WhileAUnitRuns(Fixture):
             time.sleep(0.05)
         self.assertIsNone(running(self.p), "the record goes when the unit ends")
         self.assertNotEqual(guide.next_step()["key"], "running")
+        for _ in range(200):  # the background run still writes its log page; let it finish
+            try:
+                os.kill(int(seen["pid"]), 0)
+            except OSError:
+                break
+            time.sleep(0.05)
 
     def test_a_stale_record_is_ignored(self):
         (self.p.dir / "running.json").write_text(json.dumps({"ticket": "T-1", "unit": 1, "phase": "planning", "pid": 999999}))

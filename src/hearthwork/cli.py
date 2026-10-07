@@ -119,6 +119,36 @@ def cmd_ticket_list(args):
     return 0
 
 
+def cmd_ticket_rename(args):
+    from . import tickets
+    p = project_of(args)
+    try:
+        done = tickets.rename(p, args.old, args.new)
+    except tickets.TicketError as e:
+        return fail(str(e))
+    out(f"{args.old} is now {args.new}:")
+    for line in done:
+        out(f"  {line}")
+    out("  unchanged: earlier unit prompts and reports, and commits already made, keep the old id as history")
+    try:
+        from . import worklog
+        worklog.build()
+    except Exception:
+        pass
+    return 0
+
+
+def cmd_ticket_title(args):
+    from . import tickets
+    p = project_of(args)
+    try:
+        title = tickets.set_title(p, args.id, " ".join(args.title))
+    except tickets.TicketError as e:
+        return fail(str(e))
+    out(f"{args.id}: {title}")
+    return 0
+
+
 def cmd_ticket_use(args):
     p = project_of(args)
     if not Ticket(p, args.id).exists():
@@ -529,6 +559,14 @@ def parser():
     sp.add_argument("--use", action="store_true", help="make it the active ticket")
     sp.set_defaults(fn=cmd_ticket_new)
     with_project(tk.add_parser("list")).set_defaults(fn=cmd_ticket_list)
+    sp = with_project(tk.add_parser("rename", help="give a ticket another id (its records, state and unpushed branches follow)"))
+    sp.add_argument("old")
+    sp.add_argument("new")
+    sp.set_defaults(fn=cmd_ticket_rename)
+    sp = with_project(tk.add_parser("title", help="change a ticket's title"))
+    sp.add_argument("id")
+    sp.add_argument("title", nargs="+")
+    sp.set_defaults(fn=cmd_ticket_title)
     sp = with_project(tk.add_parser("use", help="make a ticket active"))
     sp.add_argument("id")
     sp.set_defaults(fn=cmd_ticket_use)
