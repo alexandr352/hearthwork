@@ -115,5 +115,23 @@ class History(unittest.TestCase):
         self.assertEqual(p.stat().st_mtime_ns, before)
 
 
+
+class Stats(unittest.TestCase):
+    def test_stats_page_over_the_big_history(self):
+        History.setUpClass()
+        try:
+            page = (History.home / "stats.html").read_text()
+            self.assertIn("1000 units", page)
+            self.assertIn("$50.00", page)
+            self.assertIn("Cost per week", page)
+            self.assertIn("-W", page, "a row per ISO week")
+            self.assertGreaterEqual(page.count("<tr><th>20"), 26, "one row per week over 200 days")
+            self.assertIn("FEATURE", page)
+            self.assertIn("stats.html", History.html, "the log links to the stats")
+            self.assertLess(len(page), 200_000)
+        finally:
+            History.tearDownClass()
+
+
 if __name__ == "__main__":
     unittest.main()

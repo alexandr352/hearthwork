@@ -414,7 +414,7 @@ def archive(h):
             if stamps.get(key) != sig or not target.exists():
                 body = (f'<p class=back><a href="../index.html">← all tickets</a> · <a href="../../worklog.html">the log</a></p>'
                         + ticket_section(p, tid, trs, st, files="link", base="../../"))
-                home.write_atomic(target, page(body, title=f"{tid} · Hearthwork", note=f"archive · {p.name}"))
+                home.write_atomic(target, page(body, title=f"{tid} · Hearthwork", note=f"archive · {p.name}", root="../../"))
                 stamps[key] = sig
             first = min(ts(r) for r in trs)
             index.append((first, p, tid, trs, st, meta, status))
@@ -432,7 +432,7 @@ def archive(h):
             + "".join(rows) +
             "<script>var f=document.getElementById('filter');f.oninput=function(){var q=f.value.toLowerCase();"
             "document.querySelectorAll('a.row').forEach(function(a){a.hidden=q&&a.dataset.q.indexOf(q)<0})}</script>")
-    home.write_atomic(root / "index.html", page(body, title="Archive · Hearthwork", note=f"archive · {len(index)} tickets"))
+    home.write_atomic(root / "index.html", page(body, title="Archive · Hearthwork", note=f"archive · {len(index)} tickets", root="../"))
     home.write_atomic(stamps_path, json.dumps(stamps))
     return root / "index.html"
 
@@ -442,6 +442,8 @@ def build(home_path=None):
     path = h / "worklog.html"
     home.write_atomic(path, render(h))
     archive(h)
+    from . import stats
+    stats.build(h)
     return path
 
 
@@ -521,11 +523,11 @@ dialog#help dt{font-weight:700;color:var(--accent);letter-spacing:.03em}dialog#h
 pre{white-space:pre-wrap;word-break:break-word;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;font:12.5px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;max-height:520px;overflow:auto}
 code{font:13px ui-monospace,Menlo,monospace}.empty{color:var(--mute)}
 .tools{display:flex;gap:8px}
-button.theme{background:none;border:1px solid var(--line);color:var(--mute);border-radius:8px;padding:4px 10px;cursor:pointer;font:13px system-ui,sans-serif}
+button.theme,a.theme{background:none;border:1px solid var(--line);color:var(--mute);border-radius:8px;padding:4px 10px;cursor:pointer;font:13px system-ui,sans-serif;text-decoration:none;line-height:normal}
 </style></head>
 <body><main id=log>
 <div class=top><h1>Hearthwork <small>updated {{UPDATED}} · {{NOTE}}</small></h1>
-<span class=tools>{{TOPBTN}}<button class=theme onclick="var r=document.documentElement,d=r.dataset.theme==='dark'||(!r.dataset.theme&&matchMedia('(prefers-color-scheme: dark)').matches);r.dataset.theme=d?'light':'dark';try{localStorage.setItem('hw-theme',r.dataset.theme)}catch(e){}">theme</button><button class=theme onclick="document.getElementById('help').showModal()" aria-label="how to read this page" title="how to read this page">?</button></span></div>
+<span class=tools>{{TOPBTN}}<a class=theme href="{{ROOT}}stats.html">stats</a><button class=theme onclick="var r=document.documentElement,d=r.dataset.theme==='dark'||(!r.dataset.theme&&matchMedia('(prefers-color-scheme: dark)').matches);r.dataset.theme=d?'light':'dark';try{localStorage.setItem('hw-theme',r.dataset.theme)}catch(e){}">theme</button><button class=theme onclick="document.getElementById('help').showModal()" aria-label="how to read this page" title="how to read this page">?</button></span></div>
 {{BANNERS}}
 {{STATS}}
 <dialog id=help aria-labelledby=help-title>

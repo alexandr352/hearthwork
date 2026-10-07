@@ -124,6 +124,11 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Location", "/")
             self.end_headers()
             return
+        if url.path == "/stats.html":
+            if not self.authed():
+                return self.send(HTTPStatus.FORBIDDEN, "open the link `operator ui` printed (it carries the key)")
+            from . import stats
+            return self.send(HTTPStatus.OK, stats.build(self.h).read_bytes(), "text/html; charset=utf-8")
         if url.path.startswith("/archive/") or url.path.startswith("/projects/"):
             if not self.authed():
                 return self.send(HTTPStatus.FORBIDDEN, "open the link `operator ui` printed (it carries the key)")

@@ -160,6 +160,15 @@ deleted: the archive is another view of the same records. Measured on a generate
 of 1,000 units over 200 tickets: the page builds in under half a second, `operator ui`
 serves 135 KB (reports load when you open them), and the largest ticket page is 17 KB.
 
+## Stats
+
+`stats.html`, linked from the top of the log, is the whole history in numbers: totals
+(spend, units, tickets ready, cost per ready ticket, first-try rate, cache hits, executor
+hours), a bar chart of cost and of units per week, a row per week to compare (units,
+tickets ready, cost, cost per unit with its change against the week before, cache hits,
+first try, reconsidered, recovered, halted), and where the money goes: by phase, by
+model, by kind of work, by project. Built from the same records, by code.
+
 ## The spirit
 
 ```sh
