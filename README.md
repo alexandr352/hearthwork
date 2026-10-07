@@ -3,6 +3,8 @@
 A plan → execute → judge loop for [Claude Code](https://claude.com/claude-code), with a
 home, a work log, and a spirit you can talk to.
 
+![The work log with the spirit's chat: a ticket's chain of units, what each one did and cost, and the spirit answering from the records](docs/screenshot.png)
+
 You give it a ticket. An **operator** plans the work in small units and writes a prompt
 for each. An **executor** does the unit in your checkout, behind a fence. The operator
 judges the report against what git actually shows, updates the plan, and writes down what

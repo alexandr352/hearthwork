@@ -336,7 +336,11 @@ body{padding-right:400px}@media(max-width:900px){body{padding-right:0}}
 #chat-log{flex:1;overflow:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
 .msg{white-space:pre-wrap;word-break:break-word;font-size:14px;line-height:1.5}
 .msg.me{align-self:flex-end;background:color-mix(in srgb,var(--accent) 14%,var(--panel));border-radius:12px 12px 2px 12px;padding:8px 11px;max-width:85%}
-.msg.sys{color:var(--mute);font-size:13px}.msg.err{color:var(--red)}
+.msg.sys{color:var(--mute);font-size:13px}
+.msg.md{white-space:normal}.msg.md p{margin:0 0 8px}.msg.md ul,.msg.md ol{margin:0 0 8px;padding-left:20px}.msg.md li{margin:2px 0}
+.msg.md code{font:12.5px ui-monospace,Menlo,monospace;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+table.md{border-collapse:collapse;font-size:12.5px;margin:4px 0 8px;width:100%}table.md th,table.md td{border-bottom:1px solid var(--line);padding:4px 6px;text-align:left}
+table.md th{color:var(--mute);font-weight:600}.msg.err{color:var(--red)}
 .tool{font:12px ui-monospace,Menlo,monospace;color:var(--mute);border-left:2px solid var(--line);padding-left:8px;white-space:pre-wrap;word-break:break-all}
 .meta-line{font-size:11px;color:var(--mute)}
 #chat-about{display:flex;align-items:center;gap:8px;margin:0 14px;padding:6px 10px;border:1px dashed var(--accent);border-radius:8px;font-size:12px;color:var(--accent)}
@@ -361,6 +365,27 @@ button.ask{background:none;border:1px solid var(--accent);color:var(--accent);bo
 body.chat-hidden{padding-right:0}body.chat-hidden #chat{display:none}
 </style>
 <script>
+function hwMarkdown(src){
+  function esc(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+  function inline(t){return esc(t).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>').replace(/(^|[\s(])\*([^*\s][^*]*)\*(?=[\s).,;:!?]|$)/g,'$1<i>$2</i>')}
+  var out=[],lines=src.replace(/\r/g,'').split('\n'),i=0;
+  while(i<lines.length){var l=lines[i];
+    if(/^\s*\|/.test(l)){var rows=[];while(i<lines.length&&/^\s*\|/.test(lines[i])){rows.push(lines[i]);i++}
+      var cells=function(r){return r.trim().replace(/^\||\|$/g,'').split('|').map(function(c){return c.trim()})};
+      var body=rows.filter(function(r){return !/^\\s*\\|[\\s:|-]+\\|\\s*$/.test(r)});
+      var h=cells(body[0]||'');out.push('<table class=md><thead><tr>'+h.map(function(c){return '<th>'+inline(c)+'</th>'}).join('')+'</tr></thead><tbody>'+
+        body.slice(1).map(function(r){return '<tr>'+cells(r).map(function(c){return '<td>'+inline(c)+'</td>'}).join('')+'</tr>'}).join('')+'</tbody></table>');continue}
+    if(/^\s*[-*] /.test(l)){var items=[];while(i<lines.length&&(/^\s*[-*] /.test(lines[i])||(/^\s{2,}\S/.test(lines[i])&&items.length))){
+        if(/^\s*[-*] /.test(lines[i]))items.push(lines[i].replace(/^\s*[-*] /,''));else items[items.length-1]+=' '+lines[i].trim();i++}
+      out.push('<ul>'+items.map(function(t){return '<li>'+inline(t)+'</li>'}).join('')+'</ul>');continue}
+    if(/^\s*\d+\. /.test(l)){var its=[];while(i<lines.length&&/^\s*\d+\. /.test(lines[i])){its.push(lines[i].replace(/^\s*\d+\. /,''));i++}
+      out.push('<ol>'+its.map(function(t){return '<li>'+inline(t)+'</li>'}).join('')+'</ol>');continue}
+    if(/^#{1,6} /.test(l)){out.push('<p><b>'+inline(l.replace(/^#+ /,''))+'</b></p>');i++;continue}
+    if(!l.trim()){i++;continue}
+    var para=[];while(i<lines.length&&lines[i].trim()&&!/^\s*(\||[-*] |\d+\. |#{1,6} )/.test(lines[i])){para.push(lines[i]);i++}
+    out.push('<p>'+inline(para.join(' '))+'</p>')}
+  return out.join('')}
+window.hwMarkdown=hwMarkdown;
 (function(){
 var KEY="{{KEY}}",log=document.getElementById('chat-log'),form=document.getElementById('chat-form'),input=document.getElementById('chat-in'),
     aboutBox=document.getElementById('chat-about'),about=null,spent=0,costEl=document.getElementById('chat-cost');
@@ -381,7 +406,7 @@ form.onsubmit=async function(e){e.preventDefault();var text=input.value.trim();i
     var rd=r.body.getReader(),dec=new TextDecoder(),buf='';
     while(true){var c=await rd.read();if(c.done)break;buf+=dec.decode(c.value,{stream:true});var lines=buf.split('\n');buf=lines.pop();
       lines.forEach(function(l){if(!l)return;var ev=JSON.parse(l);
-        if(ev.type==='text'){if(!got){out.textContent='';got=true}out.textContent+=ev.text}
+        if(ev.type==='text'){if(!got){out.dataset.raw='';got=true}out.dataset.raw+=ev.text;out.className='msg md';out.innerHTML=hwMarkdown(out.dataset.raw)}
         else if(ev.type==='tool'){var t=document.createElement('div');t.className='tool';t.textContent=ev.text;log.insertBefore(t,out);if(got){out=add('msg','');got=false}}
         else if(ev.type==='error'){add('msg err',ev.text)}
         else if(ev.type==='done'){spent+=ev.cost_usd||0;costEl.textContent='$'+spent.toFixed(2)+' this page';add('meta-line','$'+(ev.cost_usd||0).toFixed(3)+' · '+ev.seconds+'s')}
