@@ -68,6 +68,7 @@ operator project add shop --repo ~/code/shop
 operator atlas                 # one read-only session drafts the project's map
 operator atlas questions       # what only you know; answer with: operator atlas answer 1 "..."
 operator lab config --from-atlas   # how it runs your tests; check: operator lab gate <a test file>
+operator lab config up "npm run dev"   # only if the tests need the app running: the lab finds its address
 operator ticket new T-12 --title "Totals include tax" --file ticket.md
 operator run                   # one unit; read what it did
 operator run -n 0 --max-cost 5 # keep going until ready, a question, or $5
@@ -96,6 +97,16 @@ review it and push it yourself.
 - [docs/mcp.md](docs/mcp.md): working from your own Claude Code session.
 - [examples/atlas-hearthwork.md](examples/atlas-hearthwork.md): the unedited atlas
   `operator atlas` drafted of this repository.
+
+## Development
+
+```sh
+python3 -m venv .venv && .venv/bin/pip install -e .
+.venv/bin/python -m unittest discover -s tests        # the whole suite, about a minute
+.venv/bin/python -m unittest tests/test_lab.py        # one file
+```
+
+The tests use a stand-in for the Claude CLI (`tests/fake_claude.py`): they spend nothing.
 
 ## Status
 

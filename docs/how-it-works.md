@@ -61,6 +61,13 @@ tests run against the lab's server (`ab = "in-place"`), BASE swaps the files in 
 your work is saved under a git ref first, put back, and the restore is proven by comparing
 trees; an A/B that dies midway is finished by the next lab command.
 
+When the tests need the application running, the lab runs its server too, and needs one thing
+from you: the command that starts it (`operator lab config up "npm run dev"`). `operator lab up`
+finds the address itself, from what the server prints as it starts or else the port it opens,
+waits until it answers, and saves it. A unit whose plan says it needs the server gets it raised
+before the unit and taken down after; a server left running by a run that died is stopped by
+the next run.
+
 Disposable probes live in the project's **scratch folder**, excluded from git in your checkout
 only (`.git/info/exclude`), so a probe never shows as a change and never reaches a commit.
 

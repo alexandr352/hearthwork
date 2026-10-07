@@ -32,6 +32,14 @@ Your session calls hearthwork's tools:
 Planning and judging take minutes. Rather than hang, the tools answer "still planning, call
 again" after about 50 seconds, and the work continues; the next call picks it up.
 
+## The lab
+
+`operator lab` works the same from your own session: named tests through `operator lab gate`,
+a guard proven with `operator lab ab`, the server with `operator lab up`. The `next` tool hands
+your session the lab's state with the unit. hearthwork's reader, prober and reviewer sub-agents
+ride only on its own executor; in your session, your Claude Code does that work itself, under
+the same rules (probes only in the scratch folder, one review of the diff before a commit).
+
 ## Good to know
 
 - `operator run` never touches a unit that is open in your session. `operator abandon` drops
