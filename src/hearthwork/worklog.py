@@ -392,10 +392,11 @@ def render(home_path=None, ui=False):
         nxt = None
     if nxt and nxt["key"] != "halt":
         btn = (f'<button class=ask data-ask="{esc(nxt["project"] or "")}|next|" data-text="{esc(nxt["ask"])}">'
-               f'do it with the spirit</button>') if ui else ""
-        banners.insert(0, f"""<div class=nextstep><span class=nlabel>next</span> <b>{esc(nxt['title'])}</b>
+               f'{esc(nxt.get("button") or "do it with the spirit")}</button>') if ui else ""
+        label = "now" if nxt["key"] == "running" else "next"
+        banners.insert(0, f"""<div class=nextstep><span class=nlabel>{label}</span> <b>{esc(nxt['title'])}</b>
           <div class=hint>{esc(nxt['why'])}</div>
-          <div class=hint>or yourself: <code>{esc(nxt['command'])}</code></div>{btn}</div>""")
+          <div class=hint>{esc(nxt.get("yourself") or "or yourself")}: <code>{esc(nxt['command'])}</code></div>{btn}</div>""")
     day = [r for r in all_rows if ts(r) >= day_ago]
     week = [r for r in all_rows if ts(r) >= week_ago]
     rate = cache_rate(week)

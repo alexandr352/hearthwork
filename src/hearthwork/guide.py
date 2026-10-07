@@ -36,7 +36,8 @@ def next_step(project_name=None, h=None):
                     "why": f"{r.get('title') or 'the operator is planning it'} · {mins:.0f} min so far. "
                            "The page updates as it goes; nothing to do until it is judged.",
                     "command": f"operator status -p {p.name}",
-                    "ask": "What is the running unit doing?", "project": p.name}
+                    "ask": "What is the running unit doing?", "project": p.name,
+                    "button": "ask the spirit about it", "yourself": "check yourself"}
     for p in projects:
         st = p.read_state()
         if st.get("halted"):

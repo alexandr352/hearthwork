@@ -32,6 +32,9 @@ class WhileAUnitRuns(Fixture):
         self.assertIn('id="t-demo-T-1"', page, "the ticket shows before its first unit is judged")
         self.assertIn("class=runcard", page)
         self.assertIn("the executor is working", page)
+        self.assertIn("ask the spirit about it", page)
+        self.assertNotIn("do it with the spirit", page, "nothing to do while it runs")
+        self.assertIn("<span class=nlabel>now</span>", page)
         for _ in range(200):
             if read_meter(self.p):
                 break
