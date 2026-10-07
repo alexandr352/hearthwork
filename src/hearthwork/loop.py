@@ -117,7 +117,7 @@ class Loop:
         return claude.run(
             claude_bin=self.bin, cwd=self.p.repo, prompt=prompt, model=model, timeout=timeout,
             label=label, costs=self.costs, resume=resume, tools=EXECUTOR_TOOLS,
-            setting_sources=["project", "local"], settings=self._executor_settings(),
+            setting_sources=["project", "local"] if self.p.repo_settings else ["local"], settings=self._executor_settings(),
             append_system_prompt=system, strict_mcp=not mcp,
             env_extra={**self._policy_env(policy), **economy.ttl_env(role, self.eco)})
 

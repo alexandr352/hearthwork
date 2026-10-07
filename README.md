@@ -239,6 +239,12 @@ Calls carry no MCP servers and only the tools their role needs, and none of your
 CLAUDE.md files: each session gets its own doctrine and nothing else. `operator doctor`
 warns if your settings disable hooks.
 
+A repository's own Claude Code settings (its `.claude/settings.json`, with any hooks) apply to
+the executor too. A hook written for people at the keyboard can refuse what an unattended unit
+needs, such as deleting a file it just moved. `project add` and `operator doctor` name such
+hooks, and `repo_settings = false` in `project.toml` turns them off for the executor; the
+repository's CLAUDE.md still loads.
+
 **It is a guard rail, not a sandbox.** It stops an honest session from wandering and the
 common accidents; a determined process with a shell can get past any pattern check. For
 unattended runs, use a separate OS user that owns only the checkout.

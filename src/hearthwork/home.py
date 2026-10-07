@@ -70,6 +70,12 @@ trunk = "{trunk}"              # never committed to by the loop
 protected = ["{trunk}", "main", "master", "production"]
 branch_prefix = ""             # feature branches are <prefix><TICKET>-<slug>
 
+# The repository's own Claude Code settings (.claude/settings.json: its hooks, permissions)
+# apply to the executor. A hook written for people at the keyboard can refuse what an
+# unattended unit needs (deleting a moved file, say). false: the executor works under
+# hearthwork's fence only; the repository's CLAUDE.md still loads either way.
+repo_settings = true
+
 # Commits carry your own git identity (git config user.name / user.email) and nothing else.
 # Set true to let the executor add a "Co-Authored-By: Claude" trailer.
 co_author = false
@@ -119,6 +125,7 @@ class Project:
     branch_prefix: str = ""
     network_commands: list = field(default_factory=list)
     co_author: bool = False
+    repo_settings: bool = True
     mcp_allow: list = field(default_factory=list)
 
     @property
@@ -166,8 +173,26 @@ def load_project(pdir):
         branch_prefix=data.get("branch_prefix", ""),
         network_commands=list(data.get("network_commands") or []),
         co_author=bool(data.get("co_author", False)),
+        repo_settings=bool(data.get("repo_settings", True)),
         mcp_allow=list(data.get("mcp_allow") or []),
     )
+
+
+def repo_hooks(repo):
+    """The repository's own Claude Code hooks, as 'Event: command' lines (empty when none)."""
+    out = []
+    for name in ("settings.json", "settings.local.json"):
+        p = Path(repo) / ".claude" / name
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        for event, entries in ((data.get("hooks") or {}) if isinstance(data, dict) else {}).items():
+            for e in entries or []:
+                for h in (e.get("hooks") or []) if isinstance(e, dict) else []:
+                    if isinstance(h, dict) and h.get("command"):
+                        out.append(f"{event}: {h['command']}  ({name})")
+    return out
 
 
 def projects(home=None):

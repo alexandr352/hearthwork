@@ -44,6 +44,12 @@ def cmd_project_add(args):
     out(f"project {p.name}: {p.repo} (trunk {p.trunk})")
     out(f"  its records: {p.dir}")
     out(f"  edit {p.dir / 'project.toml'} to adjust protected branches and network commands")
+    hooks = home.repo_hooks(p.repo)
+    if hooks:
+        out("  note: the repository has its own Claude Code hooks, which also run for the executor:")
+        for h in hooks[:5]:
+            out(f"    {h}")
+        out("  if one refuses what a unit needs, set repo_settings = false in project.toml")
     out("\nnext: operator atlas      drafts the map every session reads first, from the repository itself")
     out("                          (one read-only session; you review the result and answer its questions)")
     out("then: operator ticket new <ID> --title \"...\" --file <ticket.md>")
@@ -526,6 +532,10 @@ def cmd_doctor(args):
             "was refused (normal over SSH; a desktop session allows it)"))
     for p in home.projects():
         out(f"project {p.name}: {'ok' if (p.repo / '.git').exists() else 'REPOSITORY MISSING'} {p.repo}")
+        hooks = home.repo_hooks(p.repo)
+        if hooks:
+            state = "apply to the executor" if p.repo_settings else "are off for the executor (repo_settings = false)"
+            out(f"  its own Claude Code hooks {state}: " + "; ".join(h.split("  (")[0] for h in hooks[:3]))
     return 0 if ok else 1
 
 

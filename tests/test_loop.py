@@ -134,6 +134,23 @@ class LoopTest(Fixture):
         for c in self.calls():
             self.assertIn("stream-json", c["argv"])
 
+    def test_repo_settings_switch(self):
+        self.run_units(1)
+        ex = [c for c in self.calls() if c["cwd"] == str(self.repo)][0]["argv"]
+        self.assertEqual(ex[ex.index("--setting-sources") + 1], "project,local")
+        toml = self.p.dir / "project.toml"
+        toml.write_text(toml.read_text().replace("repo_settings = true", "repo_settings = false"))
+        self.run_units(1)
+        ex = [c for c in self.calls() if c["cwd"] == str(self.repo)][-1]["argv"]
+        self.assertEqual(ex[ex.index("--setting-sources") + 1], "local", "the repository's own settings and hooks are left out")
+
+    def test_repo_hooks_are_noticed(self):
+        from hearthwork import home as _home
+        (self.repo / ".claude").mkdir()
+        (self.repo / ".claude" / "settings.json").write_text(
+            '{"hooks": {"PreToolUse": [{"matcher": "*", "hooks": [{"type": "command", "command": "python3 .claude/scripts/guard.py"}]}]}}')
+        self.assertEqual(_home.repo_hooks(self.repo), ["PreToolUse: python3 .claude/scripts/guard.py  (settings.json)"])
+
     def test_every_cost_is_the_call_not_the_session(self):
         self.run_units(1)
         rows = read_meter(self.p)
