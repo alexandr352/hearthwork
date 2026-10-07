@@ -372,7 +372,7 @@ function hwMarkdown(src){
   while(i<lines.length){var l=lines[i];
     if(/^\s*\|/.test(l)){var rows=[];while(i<lines.length&&/^\s*\|/.test(lines[i])){rows.push(lines[i]);i++}
       var cells=function(r){return r.trim().replace(/^\||\|$/g,'').split('|').map(function(c){return c.trim()})};
-      var body=rows.filter(function(r){return !/^\\s*\\|[\\s:|-]+\\|\\s*$/.test(r)});
+      var body=rows.filter(function(r){return !/^\s*\|[\s:|-]+\|\s*$/.test(r)});
       var h=cells(body[0]||'');out.push('<table class=md><thead><tr>'+h.map(function(c){return '<th>'+inline(c)+'</th>'}).join('')+'</tr></thead><tbody>'+
         body.slice(1).map(function(r){return '<tr>'+cells(r).map(function(c){return '<td>'+inline(c)+'</td>'}).join('')+'</tr>'}).join('')+'</tbody></table>');continue}
     if(/^\s*[-*] /.test(l)){var items=[];while(i<lines.length&&(/^\s*[-*] /.test(lines[i])||(/^\s{2,}\S/.test(lines[i])&&items.length))){
