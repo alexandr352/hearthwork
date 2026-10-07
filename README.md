@@ -139,7 +139,9 @@ repository) a fixed brief: read the README, the manifests, the repository's own 
 CI and test configuration, and return the map: how to install, build, test one file, lint;
 where changes land; conventions; traps; and, at the end, the questions only you can answer.
 Every fact names its source; nothing is guessed. You review it, answer the questions in the
-file, and from then on the operator keeps it current from what units learn. An atlas you
+file, and from then on the operator keeps it current from what units learn.
+[examples/atlas-hearthwork.md](examples/atlas-hearthwork.md) is the unedited draft it made
+of this repository. An atlas you
 have edited is only redrafted with `--force`, and the old one is kept.
 
 ## The work log
