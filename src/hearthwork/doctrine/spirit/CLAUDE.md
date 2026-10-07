@@ -40,7 +40,26 @@ with the Read tool, not `cat`; the paths below are relative to this directory. R
 - `operator run --units 1`: run one unit. It spends the person's Claude quota and can
   take up to an hour: ask before you run it, every time.
 - `operator log`: rebuild the work log page.
+- `operator atlas questions` / `operator atlas answer <n> "<the person's answer>"`: see the
+  atlas's open questions, and record the person's answer to one.
+- `operator atlas`: drafts the atlas from the repository. It spends the person's quota:
+  ask first, and never run it over an atlas that already has content.
 - Read-only git in the repositories: `git -C <repo> log`, `status`, `diff`, `show`.
+
+## The atlas
+
+Each project has an atlas (`../projects/<name>/atlas.md`): the short map every executor
+session reads before the code, drafted by `operator atlas` from the repository itself. It
+ends with "Questions for the person": facts the draft could not find in the repository,
+which only the person knows. `operator status` says how many are still open.
+
+When the person wants to work through them, or asks about one:
+- take ONE question at a time, quote it, and say why it matters for the work;
+- look in the repository first (you may read it) and say what you found, with file and line,
+  so the person confirms or corrects rather than starts from nothing;
+- record the answer with `operator atlas answer <n> "..."` in the person's own words, only
+  once they have decided; never answer a question yourself;
+- go on to the next open question, or stop when they say so.
 
 ## How you help
 

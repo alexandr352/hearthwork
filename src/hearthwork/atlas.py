@@ -45,6 +45,77 @@ def questions(atlas_text):
     return atlas_text[i + len("## Questions for the person"):].strip() if i >= 0 else ""
 
 
+QUESTION = re.compile(r"^(\d+)\.\s+(.*)$")
+ANSWER = re.compile(r"^\s+Answer:\s*(.*)$")
+
+
+def _split(text):
+    """(before, question lines, after) around the questions section."""
+    i = text.find("## Questions for the person")
+    if i < 0:
+        return text, [], ""
+    j = text.find("\n## ", i + 5)
+    body = text[i:] if j < 0 else text[i:j]
+    rest = "" if j < 0 else text[j:]
+    return text[:i], body.splitlines(), rest
+
+
+def question_list(project):
+    """[(number, question, answer or None)] from the project's atlas."""
+    try:
+        text = (project.dir / "atlas.md").read_text(encoding="utf-8")
+    except OSError:
+        return []
+    _, lines, _ = _split(text)
+    out = []
+    for line in lines:
+        m = QUESTION.match(line)
+        if m:
+            out.append([int(m.group(1)), m.group(2).strip(), None])
+            continue
+        a = ANSWER.match(line)
+        if a and out:
+            out[-1][2] = a.group(1).strip()
+        elif out and line.strip() and out[-1][2] is None and line.startswith("   "):
+            out[-1][1] += " " + line.strip()
+    return [tuple(q) for q in out]
+
+
+def answer(project, number, text):
+    """Write the person's answer under question `number`, replacing an earlier answer."""
+    text = " ".join(str(text).split())
+    if not text:
+        raise AtlasError("the answer is empty")
+    path = project.dir / "atlas.md"
+    try:
+        whole = path.read_text(encoding="utf-8")
+    except OSError:
+        raise AtlasError("this project has no atlas yet: `operator atlas` drafts one")
+    before, lines, rest = _split(whole)
+    if not lines:
+        raise AtlasError("the atlas has no questions section")
+    out, found, pending = [], False, False
+    for line in lines:
+        m = QUESTION.match(line)
+        if pending:
+            if ANSWER.match(line):
+                continue  # the earlier answer is replaced
+            if line.startswith("   ") and not m and line.strip():
+                out.append(line)  # the question wraps onto this line
+                continue
+            out.append(f"   Answer: {text}")
+            pending = False
+        out.append(line)
+        if m and int(m.group(1)) == number:
+            found, pending = True, True
+    if pending:
+        out.append(f"   Answer: {text}")
+    if not found:
+        raise AtlasError(f"there is no question {number} (see `operator atlas questions`)")
+    write_atomic(path, before + "\n".join(out) + ("\n" if not rest else "") + rest)
+    return text
+
+
 def build(project, cfg, force=False, log=print):
     path = project.dir / "atlas.md"
     current = path.read_text(encoding="utf-8") if path.exists() else ""

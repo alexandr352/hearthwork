@@ -65,6 +65,10 @@ def cmd_upgrade(args):
     for p in home.projects():
         home.refresh_doctrine(p.dir)
         out(f"{p.name}: operator doctrine refreshed")
+    sp = home.home_dir() / "spirit" / "CLAUDE.md"
+    if sp.parent.is_dir():
+        sp.write_text(home.doctrine("spirit", "CLAUDE.md"), encoding="utf-8")
+        out("spirit: doctrine refreshed (your persona and its memory are untouched)")
     return 0
 
 
@@ -170,6 +174,15 @@ def cmd_status(args):
         meter = read_meter(p)
         spent = sum(r.get("cost_usd") or 0 for r in meter)
         out(f"{p.name} — {p.repo}")
+        from . import atlas as _atlas
+        _qs = _atlas.question_list(p)
+        _seed = _atlas.is_seed((p.dir / "atlas.md").read_text(encoding="utf-8")) if (p.dir / "atlas.md").exists() else True
+        if _seed:
+            out("  atlas: not drafted yet (operator atlas)")
+        elif _qs:
+            _open = [n for n, _, a in _qs if not a]
+            out(f"  atlas: {len(_qs) - len(_open)} of {len(_qs)} questions answered"
+                + (f"; open: {', '.join(map(str, _open))} (operator atlas questions)" if _open else ""))
         if st.get("halted"):
             h = st["halted"]
             out(f"  HALTED on {h.get('ticket')} unit {h.get('unit')}: {h.get('reason')}")
@@ -268,6 +281,24 @@ def cmd_chat(args):
 def cmd_atlas(args):
     from . import atlas
     p = project_of(args)
+    if args.action == "questions":
+        qs = atlas.question_list(p)
+        if not qs:
+            out("no questions: the atlas is not drafted yet, or it asked none")
+        for n, q, a in qs:
+            out(f"{n}. {q}")
+            out(f"   Answer: {a}" if a else "   (not answered yet)")
+        return 0
+    if args.action == "answer":
+        if len(args.rest) < 2 or not args.rest[0].isdigit():
+            return fail('say which question and the answer: operator atlas answer 3 "bug fixes only"')
+        try:
+            atlas.answer(p, int(args.rest[0]), " ".join(args.rest[1:]))
+        except atlas.AtlasError as e:
+            return fail(str(e))
+        left = sum(1 for _, _, a in atlas.question_list(p) if not a)
+        out(f"answer {args.rest[0]} recorded in the atlas; {left} question(s) left")
+        return 0
     try:
         path, qs, cost = atlas.build(p, home.load_config(), force=args.force, log=lambda m: out(m))
     except atlas.AtlasError as e:
@@ -443,7 +474,13 @@ def parser():
     sp.add_argument("--cache", choices=["policy", "auto"])
     sp.add_argument("--reset", action="store_true", help="back to full economy")
     sp.set_defaults(fn=cmd_economy)
-    sp = with_project(sub.add_parser("atlas", help="draft the project's atlas from the repository (one read-only session)"))
+    sp = with_project(sub.add_parser("atlas", help="draft the project's atlas (one read-only session), list its questions, or answer one",
+                                     description="operator atlas                draft the map from the repository\n"
+                                                 "operator atlas questions      the questions it asked you, and which are answered\n"
+                                                 "operator atlas answer 3 TEXT  record your answer to question 3",
+                                     formatter_class=argparse.RawDescriptionHelpFormatter))
+    sp.add_argument("action", nargs="?", default="draft", choices=["draft", "questions", "answer"])
+    sp.add_argument("rest", nargs="*", help="for answer: the question number, then the answer")
     sp.add_argument("--force", action="store_true", help="draft again over an edited atlas (the old one is kept)")
     sp.set_defaults(fn=cmd_atlas)
     sp = with_project(sub.add_parser("mcp", help="serve hearthwork to your Claude Code session (claude mcp add hearthwork -- operator mcp)"))

@@ -40,6 +40,37 @@ class AtlasTest(Fixture):
         self.assertEqual(len(backups), 1)
         self.assertIn("my own notes", backups[0].read_text())
 
+    def test_questions_and_answers(self):
+        cli.main(["atlas", "-p", "demo"])
+        (self.p.dir / "atlas.md").write_text((self.p.dir / "atlas.md").read_text().replace(
+            "1. Which tests are slow?\n",
+            "1. Which tests are slow?\n2. Are the old frontend folders off limits, or only\n   closed to new features?\n3. Which env file?\n"))
+        qs = atlas.question_list(self.p)
+        self.assertEqual([n for n, _, _ in qs], [1, 2, 3])
+        self.assertIn("closed to new features", qs[1][1], "a wrapped question is read whole")
+        self.assertEqual(cli.main(["atlas", "-p", "demo", "answer", "2", "Bug", "fixes", "only."]), 0)
+        text = (self.p.dir / "atlas.md").read_text()
+        self.assertIn("   closed to new features?\n   Answer: Bug fixes only.\n3. Which env file?", text)
+        cli.main(["atlas", "-p", "demo", "answer", "2", "Off limits entirely."])
+        text = (self.p.dir / "atlas.md").read_text()
+        self.assertIn("Answer: Off limits entirely.", text)
+        self.assertNotIn("Bug fixes only.", text, "an answer is replaced, not stacked")
+        cli.main(["atlas", "-p", "demo", "answer", "3", "local.js"])
+        self.assertEqual([a for _, _, a in atlas.question_list(self.p)], [None, "Off limits entirely.", "local.js"])
+        self.assertEqual(cli.main(["atlas", "-p", "demo", "answer", "9", "x"]), 2)
+
+    def test_status_shows_the_atlas(self):
+        import contextlib, io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            cli.main(["status", "-p", "demo"])
+        self.assertIn("atlas: not drafted yet", buf.getvalue())
+        cli.main(["atlas", "-p", "demo"])
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            cli.main(["status", "-p", "demo"])
+        self.assertIn("atlas: 0 of 1 questions answered; open: 1", buf.getvalue())
+
     def test_extract(self):
         self.assertIsNone(atlas.extract("no atlas here"))
         good = "# Atlas\n" + "\n".join(h + "\nx\n" for h in atlas.HEADINGS)

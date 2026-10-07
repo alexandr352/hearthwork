@@ -345,6 +345,16 @@ def render(home_path=None, ui=False):
               <div class=hint>answer with <code>operator rule "…"</code>, or talk it through with the spirit
               (<code>operator chat</code>)</div>
               {f'<button class=ask data-ask="{esc(p.name)}|{esc(hl.get("ticket"))}|{esc(hl.get("unit") or "")}">talk it through here</button>' if ui else ''}</div>""")
+        try:
+            from . import atlas as _atlas
+            open_q = [n for n, _, a in _atlas.question_list(p) if not a]
+        except Exception:
+            open_q = []
+        if open_q:
+            banners.append(f"""<div class=atlasq><b>{esc(p.name)}: the atlas has {len(open_q)} open question{"s" if len(open_q) != 1 else ""}</b>
+              — facts the draft could not find in the repository. Every unit reads the answers first.
+              <div class=hint>answer with <code>operator atlas answer &lt;n&gt; "…"</code>, see them with <code>operator atlas questions</code></div>
+              {f'<button class=ask data-ask="{esc(p.name)}|atlas|">answer them with the spirit</button>' if ui else ''}</div>""")
         groups = by_ticket(rows)
         order = sorted(groups, key=lambda k: max(ts(r) for r in groups[k]), reverse=True)
         full, older = [], []
@@ -471,7 +481,8 @@ h3{margin:0;font-size:16px}
 .stats div{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:var(--mute);font-size:13px}
 .stats span{display:block;color:var(--ink);font-size:22px;font-weight:600}
 .halt{background:color-mix(in srgb,var(--red) 12%,var(--panel));border:1px solid var(--red);border-radius:10px;padding:12px 14px;margin:12px 0}
-.halt .hint{color:var(--mute);font-size:13px;margin-top:4px}
+.halt .hint,.atlasq .hint{color:var(--mute);font-size:13px;margin-top:4px}
+.atlasq{background:color-mix(in srgb,var(--accent) 9%,var(--panel));border:1px solid color-mix(in srgb,var(--accent) 45%,var(--line));border-radius:10px;padding:12px 14px;margin:12px 0}
 .ticket{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin:12px 0}
 .ticket .sub{color:var(--mute)}.nums{color:var(--mute);font-size:13px;margin-top:2px}
 .badge{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:2px 7px;border-radius:99px;margin-left:6px;vertical-align:2px;border:1px solid var(--line);color:var(--mute)}

@@ -347,8 +347,18 @@ def check_spirit(tool, ti, cwd):
         allow(tool, "memory")
     if tool == "Bash":
         cmd = ti.get("command", "").strip()
-        if re.search(r"[;&|`<>\n]|\$\(", cmd):
-            deny(tool, "one command at a time, no pipes, redirects or substitutions", cmd)
+        # Substitution runs even inside double quotes, so it is refused anywhere. Operators
+        # (; & | < >) are refused only where the shell would act on them: outside quotes.
+        if "`" in cmd or "$(" in cmd or "\n" in cmd:
+            deny(tool, "one command at a time, no substitutions or newlines", cmd)
+        try:
+            lex = shlex.shlex(cmd, posix=True, punctuation_chars=";&|<>()")
+            lex.whitespace_split = True
+            words = list(lex)
+        except ValueError:
+            deny(tool, "the command does not parse", cmd)
+        if any(w and set(w) <= set(";&|<>()") for w in words):
+            deny(tool, "one command at a time, no pipes, redirects or chains", cmd)
         try:
             argv = shlex.split(cmd)
         except ValueError:

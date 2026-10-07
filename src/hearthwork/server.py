@@ -225,7 +225,10 @@ class Handler(BaseHTTPRequestHandler):
         h = self.h
         sdir = spirit.spirit_dir(h)
         prompt = message
-        if about and isinstance(about, dict):
+        if about and isinstance(about, dict) and about.get("ticket") == "atlas":
+            prompt = (f"[The person wants to work through the open questions of project {about.get('project')}'s "
+                      f"atlas: ../projects/{about.get('project')}/atlas.md, and `operator atlas questions`.]\n\n" + message)
+        elif about and isinstance(about, dict):
             ctx = (f"[The person is looking at project {about.get('project')}, ticket {about.get('ticket')}"
                    + (f", unit {about.get('unit')}" if about.get("unit") else "")
                    + ". Its records are under ../projects/{0}/tickets/{1}/.]".format(about.get("project"), about.get("ticket")))
@@ -390,10 +393,10 @@ window.hwMarkdown=hwMarkdown;
 var KEY="{{KEY}}",log=document.getElementById('chat-log'),form=document.getElementById('chat-form'),input=document.getElementById('chat-in'),
     aboutBox=document.getElementById('chat-about'),about=null,spent=0,costEl=document.getElementById('chat-cost');
 function add(cls,text){var d=document.createElement('div');d.className=cls;d.textContent=text;log.appendChild(d);log.scrollTop=log.scrollHeight;return d}
-function setAbout(a){about=a;aboutBox.hidden=!a;if(a)aboutBox.querySelector('span').textContent='about '+a.project+' / '+a.ticket+(a.unit?' / unit '+a.unit:'');}
+function setAbout(a){about=a;aboutBox.hidden=!a;if(a)aboutBox.querySelector('span').textContent=a.ticket==='atlas'?'about '+a.project+' / the atlas questions':'about '+a.project+' / '+a.ticket+(a.unit?' / unit '+a.unit:'');}
 aboutBox.querySelector('button').onclick=function(){setAbout(null)};
 document.addEventListener('click',function(e){var b=e.target.closest('button.ask');if(!b)return;var p=b.dataset.ask.split('|');
-  setAbout({project:p[0],ticket:p[1],unit:p[2]||null});show(true);input.focus();if(!input.value)input.value=p[2]?'What happened in this unit, and what comes next?':'Why did this halt, and what should I decide?';});
+  setAbout({project:p[0],ticket:p[1],unit:p[2]||null});show(true);input.focus();if(!input.value)input.value=p[1]==='atlas'?'Let\'s go through the open atlas questions, one at a time.':p[2]?'What happened in this unit, and what comes next?':'Why did this halt, and what should I decide?';});
 function show(on){document.body.classList.toggle('chat-hidden',!on);document.getElementById('chat-open').hidden=on;try{localStorage.setItem('hw-chat',on?'1':'0')}catch(e){}}
 document.getElementById('chat-min').onclick=function(){show(false)};document.getElementById('chat-open').onclick=function(){show(true)};
 try{if(localStorage.getItem('hw-chat')==='0')show(false)}catch(e){}
