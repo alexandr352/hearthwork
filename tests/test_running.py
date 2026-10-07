@@ -47,6 +47,19 @@ class WhileAUnitRuns(Fixture):
         (self.p.dir / "running.json").write_text(json.dumps({"ticket": "T-1", "unit": 1, "phase": "planning", "pid": 999999}))
         self.assertIsNone(running(self.p))
 
+    def test_a_held_lock_counts_without_a_record(self):
+        from hearthwork.records import Lock
+        lock = Lock(self.p)
+        self.assertTrue(lock.acquire())
+        try:
+            r = running(self.p)
+            self.assertIsNotNone(r, "a run started by an older version still shows")
+            self.assertEqual((r["ticket"], r["phase"]), ("T-1", "working"))
+            self.assertEqual(guide.next_step()["key"], "running")
+        finally:
+            lock.release()
+        self.assertIsNone(running(self.p))
+
     def test_new_active_ticket_has_a_section(self):
         self.assertIn('id="t-demo-T-1"', worklog.render(ui=True))
         self.assertIn("no units yet", worklog.render(ui=True))

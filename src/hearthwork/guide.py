@@ -31,7 +31,8 @@ def next_step(project_name=None, h=None):
         r = running(p)
         if r:
             mins = (time.time() - (r.get("started") or time.time())) / 60
-            return {"key": "running", "title": f"Unit {r['unit']} of {r['ticket']} is running: {r.get('phase')}",
+            who = f"Unit {r['unit']} of {r['ticket']}" if r.get("unit") not in (None, "?") else f"A unit of {r['ticket'] or p.name}"
+            return {"key": "running", "title": f"{who} is running: {r.get('phase')}",
                     "why": f"{r.get('title') or 'the operator is planning it'} · {mins:.0f} min so far. "
                            "The page updates as it goes; nothing to do until it is judged.",
                     "command": f"operator status -p {p.name}",

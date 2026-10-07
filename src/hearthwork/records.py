@@ -74,18 +74,50 @@ class Ticket:
         self.clear("session")
 
 
+def lock_held(project):
+    """True when a run holds the project's lock, whatever version started it."""
+    path = Path(project.dir) / ".lock"
+    if not path.exists():
+        return False
+    try:
+        with open(path, "a+") as fh:
+            try:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return True
+            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+            return False
+    except OSError:
+        return False
+
+
 def running(project):
-    """The unit in flight on a project, or None. A record whose process is gone is stale."""
+    """The unit in flight on a project, or None. A record whose process is gone is stale.
+    A held lock with no record (a run started by an older version) still counts as running."""
     try:
         rec = json.loads((Path(project.dir) / "running.json").read_text())
     except (OSError, ValueError):
-        return None
+        rec = None
+    if rec is None:
+        if not lock_held(project):
+            return None
+        try:
+            st = json.loads((Path(project.dir) / "state.json").read_text())
+        except (OSError, ValueError):
+            st = {}
+        started = None
+        try:
+            started = (Path(project.dir) / ".lock").stat().st_mtime
+        except OSError:
+            pass
+        return {"ticket": st.get("active_ticket"), "unit": "?", "phase": "working", "title": None,
+                "started": started, "pid": None}
     try:
         os.kill(int(rec.get("pid")), 0)
     except PermissionError:
         return rec  # alive, owned by another user
     except (OSError, TypeError, ValueError):
-        return None
+        return None if not lock_held(project) else dict(rec, pid=None)
     return rec
 
 

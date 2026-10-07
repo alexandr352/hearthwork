@@ -281,13 +281,14 @@ def mode_html(mode):
             f'data-tip="{esc(MODES.get(mode, ""))}">{esc(mode)}</span>')
 
 
-PHASE_WORD = {"planning": "the operator is planning it", "executing": "the executor is working",
+PHASE_WORD = {"working": "a unit is in progress", "planning": "the operator is planning it", "executing": "the executor is working",
               "judging": "the operator is judging the report", "surveying": "reading the tree after a failed run"}
 
 
 def running_card(p, run):
     started = run.get("started") or time.time()
-    return (f'<div class=runcard data-started="{started:.0f}"><span class=spin></span><b>unit {esc(run.get("unit"))}</b> '
+    label = f"unit {esc(run.get('unit'))}" if run.get("unit") not in (None, "?") else "a unit"
+    return (f'<div class=runcard data-started="{started:.0f}"><span class=spin></span><b>{label}</b> '
             f'<span class=chip>{esc(run.get("phase"))}</span> <span class=title>{esc(run.get("title") or "")}</span>'
             f'<span class=did>{esc(PHASE_WORD.get(run.get("phase"), ""))} · '
             f'<span class=elapsed>{(time.time() - started) / 60:.0f} min</span></span></div>')
