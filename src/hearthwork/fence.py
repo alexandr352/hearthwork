@@ -154,6 +154,28 @@ def git_verb(argv):
     return (args[0], args[1:]) if args else (None, [])
 
 
+def protected_target(verb, rest):
+    """The protected branch a checkout/switch/branch would move to or change, if any.
+    Creating a new branch FROM a protected one (`checkout -b T-1-fix main`) is fine:
+    that is how a ticket's branch is cut from the trunk."""
+    protected = POLICY.get("protected", [])
+    args = [a for a in rest if a != "--"]
+    if verb in ("checkout", "switch") and any(a in ("-b", "-B", "-c", "-C", "--create", "--force-create") for a in args):
+        i = next(i for i, a in enumerate(args) if a in ("-b", "-B", "-c", "-C", "--create", "--force-create"))
+        new = args[i + 1] if i + 1 < len(args) else None
+        return new if new in protected else None
+    if verb == "branch":
+        flags = [a for a in args if a.startswith("-")]
+        names = [a for a in args if not a.startswith("-")]
+        if not flags or flags == ["--list"] or "--show-current" in flags:
+            return names[0] if names and names[0] in protected and len(names) > 1 else None
+        if any(f in ("-d", "-D", "-m", "-M", "-f", "--force", "--delete", "--move", "-c", "-C") for f in flags):
+            return next((n for n in names if n in protected), None)
+        return None
+    names = [a for a in args if not a.startswith("-")]
+    return names[0] if names and names[0] in protected else None
+
+
 def shell_check(cmd, cwd, write_roots):
     body = strip_heredocs(cmd)
     netcmds = POLICY.get("network_commands", [])
@@ -180,9 +202,9 @@ def shell_check(cmd, cwd, write_roots):
                 if POLICY.get("_branch") in POLICY.get("protected", []):
                     return f"the checkout is on {POLICY['_branch']}, which is protected: create the ticket's branch first"
             if verb in ("checkout", "switch", "branch"):
-                for b in POLICY.get("protected", []):
-                    if b in rest:
-                        return f"{b} is protected: work happens on the ticket's branch"
+                bad = protected_target(verb, rest)
+                if bad:
+                    return f"{bad} is protected: work happens on the ticket's branch"
     if PACKAGE_NET.search(body) and not allowed_net:
         return "package installs reach the network and are not allowed (add the prefix to network_commands)"
     for raw in path_mentions(body):

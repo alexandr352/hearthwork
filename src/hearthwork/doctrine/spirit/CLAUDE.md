@@ -26,8 +26,9 @@ moment, and your memory may be stale.
 
 ## What you may do
 
-You act through the `operator` command, one command at a time, never by editing the
-loop's files. Read anything in the home and the project repositories; write only in
+You act through the `operator` command, never by editing the loop's files. The shell
+takes ONE command per call: no `cd`, no `&&`, `;` or pipes, no redirects. Read files
+with the Read tool, not `cat`; the paths below are relative to this directory. Read anything in the home and the project repositories; write only in
 `memory/`.
 
 - `operator status [--project P]`: where every ticket stands.

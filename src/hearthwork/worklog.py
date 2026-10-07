@@ -66,7 +66,7 @@ def phase_line(rec):
     return "".join(parts)
 
 
-def unit_card(p, rec):
+def unit_card(p, rec, ui=False):
     t = Ticket(p, rec["ticket"])
     n = rec.get("unit")
     d = t.unit_dir(n) if n else None
@@ -92,12 +92,13 @@ def unit_card(p, rec):
     <div class=verdict><b>{esc(v.get('action') or rec.get('outcome') or '')}</b> — {esc(v.get('reason') or '')}</div>
     {f'<div class=next>next: {esc(v.get("next"))}</div>' if v.get('next') else ''}
     <div class=phases>{phase_line(rec)}</div>
+    {f'<button class=ask data-ask="{esc(p.name)}|{esc(rec["ticket"])}|{n}">ask the spirit about this unit</button>' if ui else ''}
     {''.join(files)}
   </div>
 </details>"""
 
 
-def build(home_path=None):
+def render(home_path=None, ui=False):
     h = home_path or home.home_dir()
     projects = home.projects(h)
     now = time.time()
@@ -120,7 +121,8 @@ def build(home_path=None):
             banners.append(f"""<div class=halt><b>{esc(p.name)} is halted</b> on {esc(hl.get('ticket'))}
               {('unit ' + esc(hl.get('unit'))) if hl.get('unit') else ''}: {esc(hl.get('reason'))}
               <div class=hint>answer with <code>operator rule "…"</code>, or talk it through with the spirit
-              (<code>operator chat</code>)</div></div>""")
+              (<code>operator chat</code>)</div>
+              {f'<button class=ask data-ask="{esc(p.name)}|{esc(hl.get("ticket"))}|{esc(hl.get("unit") or "")}">talk it through here</button>' if ui else ''}</div>""")
         by_ticket = {}
         for r in rows:
             by_ticket.setdefault(r.get("ticket"), []).append(r)
@@ -147,7 +149,7 @@ def build(home_path=None):
     <div class=strip>{strip}</div>
     {f'<div class=next>next: {esc(last_v.get("next"))}</div>' if last_v.get('next') and status != 'ready' else ''}
   </header>
-  {''.join(unit_card(p, r) for r in reversed(trs))}
+  {''.join(unit_card(p, r, ui) for r in reversed(trs))}
 </section>""")
         sections.append(f"""<h2>{esc(p.name)} <span class=repo>{esc(p.repo)}</span></h2>
 {''.join(tickets_html) or '<p class=empty>No units yet. <code>operator run</code> starts one.</p>'}""")
@@ -163,16 +165,23 @@ def build(home_path=None):
 </div>"""
     page = TEMPLATE.replace("{{BANNERS}}", "".join(banners)).replace("{{STATS}}", stats) \
         .replace("{{SECTIONS}}", "".join(sections) or "<p class=empty>No projects yet.</p>") \
-        .replace("{{UPDATED}}", time.strftime("%Y-%m-%d %H:%M", time.localtime()))
+        .replace("{{UPDATED}}", time.strftime("%Y-%m-%d %H:%M", time.localtime())) \
+        .replace("{{REFRESH}}", "" if ui else '<meta http-equiv=refresh content=60>') \
+        .replace("{{NOTE}}", "live" if ui else "refreshes every minute")
+    return page
+
+
+def build(home_path=None):
+    h = home_path or home.home_dir()
     path = h / "worklog.html"
-    home.write_atomic(path, page)
+    home.write_atomic(path, render(h))
     return path
 
 
 TEMPLATE = """<!doctype html>
 <html lang=en><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width, initial-scale=1">
-<meta http-equiv=refresh content=60>
+{{REFRESH}}
 <title>Hearthwork Log</title>
 <style>
 :root{--bg:#f7f5f0;--panel:#fff;--ink:#22201c;--mute:#6f6a60;--line:#e4dfd4;--green:#2f8f5b;--amber:#c98a12;--red:#c2412d;--accent:#b5532a}
@@ -209,8 +218,8 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--bg);border:1px s
 code{font:13px ui-monospace,Menlo,monospace}.empty{color:var(--mute)}
 button.theme{background:none;border:1px solid var(--line);color:var(--mute);border-radius:8px;padding:4px 10px;cursor:pointer}
 </style></head>
-<body><main>
-<div class=top><h1>Hearthwork <small>updated {{UPDATED}} · refreshes every minute</small></h1>
+<body><main id=log>
+<div class=top><h1>Hearthwork <small>updated {{UPDATED}} · {{NOTE}}</small></h1>
 <button class=theme onclick="var r=document.documentElement,d=r.dataset.theme==='dark'||(!r.dataset.theme&&matchMedia('(prefers-color-scheme: dark)').matches);r.dataset.theme=d?'light':'dark';try{localStorage.setItem('hw-theme',r.dataset.theme)}catch(e){}">theme</button></div>
 {{BANNERS}}
 {{STATS}}

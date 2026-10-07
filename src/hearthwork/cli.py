@@ -248,24 +248,20 @@ def cmd_log(args):
 
 
 def cmd_chat(args):
+    from . import spirit
     h, _ = home.init_home()
-    spirit = h / "spirit"
     cfg = home.load_config()
     claude = shutil.which(cfg["claude"]["bin"]) or cfg["claude"]["bin"]
-    from . import claude as cl, fence
-    settings = fence.settings_for()
-    settings["claudeMdExcludes"] = cl.doctrine_excludes(spirit)
-    repos = [str(p.repo) for p in home.projects()]
-    policy = {"mode": "spirit", "home": str(h), "repos": repos, "log": str(spirit / "fence.log")}
-    env = dict(os.environ, HEARTHWORK_FENCE_POLICY=json.dumps(policy))
-    bindir = str(Path(sys.argv[0]).resolve().parent)
-    env["PATH"] = bindir + os.pathsep + env.get("PATH", "")
-    argv = [claude, "--settings", json.dumps(settings), "--setting-sources", "project",
-            "--add-dir", str(h)] + sum((["--add-dir", r] for r in repos), [])
-    if args.model:
-        argv += ["--model", args.model]
-    os.chdir(spirit)
+    tail, env = spirit.launch(h)
+    argv = [claude, *tail, "--model", args.model or cfg["models"]["spirit"]]
+    os.chdir(spirit.spirit_dir(h))
     os.execvpe(claude, argv, env)
+
+
+def cmd_ui(args):
+    from . import server
+    home.init_home()
+    return server.serve(port=args.port, open_browser=not args.no_browser)
 
 
 def cmd_doctor(args):
@@ -347,6 +343,10 @@ def parser():
     sp = sub.add_parser("chat", help="talk to the spirit")
     sp.add_argument("--model")
     sp.set_defaults(fn=cmd_chat)
+    sp = sub.add_parser("ui", help="serve the work log with the spirit's chat on this machine")
+    sp.add_argument("--port", type=int, default=0, help="default: a free port")
+    sp.add_argument("--no-browser", action="store_true")
+    sp.set_defaults(fn=cmd_ui)
     sub.add_parser("doctor", help="check the setup").set_defaults(fn=cmd_doctor)
     sub.add_parser("upgrade", help="refresh every project's operator doctrine from this version").set_defaults(fn=cmd_upgrade)
     return ap

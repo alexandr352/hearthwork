@@ -36,6 +36,7 @@ bin = "claude"                 # the Claude Code CLI
 operator = "opus"              # plans and judges
 executor = "opus"              # does the work in your checkout
 survey = "sonnet"              # reads the tree when an executor died without a report
+spirit = "sonnet"              # the one you talk to (operator chat, operator ui)
 
 [timeouts]                     # seconds
 plan = 1800
