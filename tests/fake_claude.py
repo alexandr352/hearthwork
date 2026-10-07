@@ -30,6 +30,9 @@ def flag(name):
     return False
 
 if prompt.startswith("PHASE: PLAN") or prompt.startswith("DEVIATION") and "PLAN" in prompt:
+    if flag("slow-plan"):
+        import time
+        time.sleep(2)
     if flag("plan-bad-once"):
         envelope('{"action": "execute", "unit": 1}')
     if flag("plan-halt"):

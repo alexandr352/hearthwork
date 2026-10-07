@@ -15,6 +15,7 @@ what the tree holds, and the operator judges on that instead of on a one-line fa
 
 import json
 import time
+import uuid
 from dataclasses import dataclass, field
 
 from . import claude, contract, fence, gitinfo
@@ -171,6 +172,10 @@ class Loop:
     # --- one unit ------------------------------------------------------------
 
     def run_unit(self):
+        """One whole unit with a headless executor (`operator run`)."""
+        return self._wrapped(self._unit)
+
+    def _wrapped(self, body, *args):
         st = self.p.read_state()
         if st.get("halted"):
             h = st["halted"]
@@ -187,14 +192,14 @@ class Loop:
         rec = {"ts": now_iso(), "project": self.p.name, "ticket": tid, "unit": None, "phases": {}}
         t0 = time.time()
         try:
-            out = self._unit(t, rec)
+            out = body(t, rec, *args)
         finally:
             lock.release()
         rec["seconds"] = round(time.time() - t0, 1)
         rec["cost_usd"] = round(sum(c.get("cost_usd") or 0 for calls in rec["phases"].values() for c in calls), 6)
         rec.setdefault("outcome", out.status)
         out.cost_usd = rec["cost_usd"]
-        if rec["phases"]:
+        if rec["phases"] and not rec.get("no_meter"):
             meter(self.p, rec)
         try:
             from . import worklog
@@ -203,7 +208,64 @@ class Loop:
             self.log(f"work log not rebuilt: {e}")
         return out
 
-    def _unit(self, t, rec):
+    # --- MCP: the person's own Claude Code session is the executor -------------
+
+    def lease_plan(self):
+        """Plan the next unit and open a lease on it for the person's session; or return
+        the lease already open. A pending judgement is made first."""
+        return self._wrapped(self._lease_plan)
+
+    def lease_submit(self, lease_id, report):
+        """Take the session's report for the open lease, read git, and judge."""
+        return self._wrapped(self._lease_submit, lease_id, report)
+
+    def _lease_plan(self, t, rec):
+        lease = t.read("lease.json")
+        if lease:
+            rec["no_meter"] = True
+            plan = json.loads((t.unit_dir(lease["unit"]) / "plan.json").read_text())
+            return Outcome("lease", f"unit {lease['unit']} is open in your session", t.id, lease["unit"],
+                           details={"lease": lease, "plan": plan})
+        if t.read("judge-pending.json") or t.read("resume.json"):
+            return self._unit(t, rec, recover_only=True)
+        n, plan, stop = self._plan(t, rec)
+        if stop:
+            return stop
+        lease = {"lease": uuid.uuid4().hex[:12], "unit": n, "before": gitinfo.snapshot(self.p.repo),
+                 "opened": now_iso(), "opened_epoch": time.time()}
+        t.write("lease.json", lease)
+        rec["no_meter"] = True   # the unit is metered once, when it is judged
+        t.write("lease-rec.json", rec)
+        return Outcome("lease", f"unit {n} planned: {plan['title']}", t.id, n, details={"lease": lease, "plan": plan})
+
+    def _lease_submit(self, t, rec, lease_id, report):
+        lease = t.read("lease.json")
+        if not lease:
+            rec["no_meter"] = True
+            return Outcome("failed", "no unit is open: call next first", t.id)
+        if lease["lease"] != lease_id:
+            rec["no_meter"] = True
+            return Outcome("failed", f"lease {lease_id} is not the open one ({lease['lease']}, unit {lease['unit']})",
+                           t.id, lease["unit"])
+        planned = t.read("lease-rec.json") or {}
+        rec.update({k: planned[k] for k in ("ts", "unit", "kind", "title") if k in planned})
+        rec["phases"] = planned.get("phases") or {}
+        rec["phases"]["execute"] = [{"label": "execute", "model": "your session", "seconds":
+                                     round(time.time() - lease.get("opened_epoch", time.time()), 1),
+                                     "cost_usd": None, "cost_basis": "not metered (your own session)"}]
+        rec["executor"] = "mcp"
+        n = lease["unit"]
+        plan = json.loads((t.unit_dir(n) / "plan.json").read_text())
+        t.clear("lease.json")
+        t.clear("lease-rec.json")
+        return self._after_execute(t, rec, n, plan, None, lease["before"], died=None,
+                                   report_text=report)
+
+    def _unit(self, t, rec, recover_only=False):
+        if t.read("lease.json") and not recover_only:
+            rec["no_meter"] = True
+            return Outcome("busy", "a unit is open in a Claude Code session (MCP): submit it there, "
+                                   "or `operator abandon` to drop it", t.id)
         pending = t.read("judge-pending.json")
         if pending:
             rec["unit"] = n = pending["unit"]
@@ -226,6 +288,13 @@ class Loop:
             t.clear("resume.json")
             return self._after_execute(t, rec, n, plan, None, resume["before"], died="resume attempts exhausted")
 
+        n, plan, stop = self._plan(t, rec)
+        if stop:
+            return stop
+        return self._execute(t, rec, n, plan)
+
+    def _plan(self, t, rec):
+        """(unit, plan, None) for an approved plan, or (None, None, Outcome) when it stops."""
         n = t.next_unit()
         rec["unit"] = n
         chain = t.read("chain.json")
@@ -239,17 +308,16 @@ class Loop:
         plan, stop = self._ask_operator(
             t, prompt, "plan", lambda a: contract.check_plan(a, n, chain and chain["chain"]), "plan", rec)
         if stop:
-            return stop
-        if plan["action"] == "halt":
-            write_unit_file(t, n, "plan.json", json.dumps(plan, indent=2))
-            return self._halt(t, rec, plan["reason"])
+            return None, None, stop
         write_unit_file(t, n, "plan.json", json.dumps(plan, indent=2))
+        if plan["action"] == "halt":
+            return None, None, self._halt(t, rec, plan["reason"])
         write_unit_file(t, n, "prompt.md", plan["prompt"])
         rec["kind"], rec["title"] = plan["kind"], plan["title"]
         if plan.get("chain"):
             t.write("chain.json", {"chain": plan["chain"], "phase": plan["chain_phase"] - 1,
                                    "total": plan["chain_total"], "unit": n})
-        return self._execute(t, rec, n, plan)
+        return n, plan, None
 
     def _execute(self, t, rec, n, plan, resume=None):
         before = resume["before"] if resume else gitinfo.snapshot(self.p.repo)
@@ -270,8 +338,8 @@ class Loop:
         t.clear("resume.json")
         return self._after_execute(t, rec, n, plan, res, before, died=None if res.ok else res.error)
 
-    def _after_execute(self, t, rec, n, plan, res, before, died):
-        report = res.text if res and res.ok else None
+    def _after_execute(self, t, rec, n, plan, res, before, died, report_text=None):
+        report = report_text if report_text is not None else (res.text if res and res.ok else None)
         survey_path = None
         if report is None:
             self.log(f"{t.id} unit {n}: the executor returned no report ({died}); surveying the tree")

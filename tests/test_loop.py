@@ -13,7 +13,9 @@ from hearthwork import cli, home  # noqa: E402
 from hearthwork.records import Ticket, read_meter  # noqa: E402
 
 
-class LoopTest(unittest.TestCase):
+class Fixture(unittest.TestCase):
+    """A throwaway home, a repository, a project and one ticket, wired to the fake CLI."""
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         root = Path(self.tmp.name)
@@ -48,6 +50,9 @@ class LoopTest(unittest.TestCase):
 
     def run_units(self, n=1):
         return cli.main(["run", "-p", "demo", "--units", str(n)])
+
+
+class LoopTest(Fixture):
 
     def test_two_units_to_ticket_ready(self):
         self.assertEqual(self.run_units(0), 0)

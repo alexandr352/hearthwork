@@ -58,11 +58,12 @@ def phase_line(rec):
         calls = (rec.get("phases") or {}).get(name)
         if not calls:
             continue
-        cost = sum(c.get("cost_usd") or 0 for c in calls)
+        metered = [c for c in calls if c.get("cost_usd") is not None]
+        cost = money(sum(c["cost_usd"] for c in metered)) if metered else "not metered"
         secs = sum(c.get("seconds") or 0 for c in calls)
         tries = f" ×{len(calls)}" if len(calls) > 1 else ""
         model = calls[-1].get("model", "")
-        parts.append(f"<span class=ph><b>{name}</b>{tries} {esc(model)} · {secs / 60:.1f} min · {money(cost)}</span>")
+        parts.append(f"<span class=ph><b>{name}</b>{tries} {esc(model)} · {secs / 60:.1f} min · {cost}</span>")
     return "".join(parts)
 
 

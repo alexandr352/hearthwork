@@ -264,6 +264,33 @@ def cmd_chat(args):
     os.execvpe(claude, argv, env)
 
 
+def cmd_mcp(args):
+    from . import mcp
+    return mcp.serve(args.project)
+
+
+def cmd_abandon(args):
+    p = project_of(args)
+    st = p.read_state()
+    tid = st.get("active_ticket")
+    if not tid:
+        return fail("no active ticket")
+    t = Ticket(p, tid)
+    lease = t.read("lease.json")
+    if not lease:
+        out("no unit is open")
+        return 0
+    t.clear("lease.json")
+    t.clear("lease-rec.json")
+    with open(t.path("rulings.md"), "a", encoding="utf-8") as f:
+        if f.tell() == 0:
+            f.write(f"# Rulings on {tid}\n\nThe person's answers. Each binds every later unit.\n")
+        f.write(f"\n## {now_iso()}\nRuling: unit {lease['unit']} was abandoned before it was done; its work, "
+                "if any, is whatever the tree now shows. Plan from the tree as it stands.\n")
+    out(f"unit {lease['unit']} abandoned; the next plan is told so")
+    return 0
+
+
 def cmd_ui(args):
     from . import server
     home.init_home()
@@ -362,6 +389,10 @@ def parser():
     sp = sub.add_parser("chat", help="talk to the spirit")
     sp.add_argument("--model")
     sp.set_defaults(fn=cmd_chat)
+    sp = with_project(sub.add_parser("mcp", help="serve hearthwork to your Claude Code session (claude mcp add hearthwork -- operator mcp)"))
+    sp.set_defaults(fn=cmd_mcp)
+    sp = with_project(sub.add_parser("abandon", help="drop a unit left open by an MCP session"))
+    sp.set_defaults(fn=cmd_abandon)
     sp = sub.add_parser("ui", help="serve the work log with the spirit's chat on this machine")
     sp.add_argument("--port", type=int, default=0, help="default: a free port")
     sp.add_argument("--no-browser", action="store_true")

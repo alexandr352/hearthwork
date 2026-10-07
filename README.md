@@ -58,7 +58,10 @@ operator run                # one unit; see what it did
 operator run -n 0           # keep going until it is ready or needs you
 operator status
 operator log                # prints the path of the work log page
+operator ui                 # the work log, live, with the spirit's chat beside it
 ```
+
+`operator ui` serves on 127.0.0.1 only and prints a link carrying a one-time key.
 
 When the operator needs you, it halts with a question. Answer it:
 
@@ -68,6 +71,23 @@ operator run
 ```
 
 The ruling is kept with the ticket and binds every later unit.
+
+### With your own Claude Code session (MCP)
+
+Register hearthwork once in the repository, then work the ticket from your usual session:
+
+```sh
+claude mcp add hearthwork -- operator mcp
+claude
+> work the next unit with hearthwork
+```
+
+Your session calls `next`, gets the unit and the executor's rules, does the work in front of
+you (you approve each edit as usual), and calls `submit` with its report. The operator still
+plans and judges in its own fenced session, and the program still reads git itself, so the
+judge stays independent of whoever did the work. Planning and judging take minutes; the tools
+say "still planning, call again" rather than hang. `operator run` will not touch a unit that
+is open in your session; `operator abandon` drops one you walked away from.
 
 ### Unattended
 
@@ -158,10 +178,8 @@ each call's own increment.
 
 ## Status
 
-0.1: the loop, recovery, the fence, the work log and the spirit. Planned: an MCP mode
-where your own interactive Claude Code session is the executor and you watch each edit,
-a local server for the work log with the spirit's chat beside it, and ticket sources
-beyond markdown files (GitHub Issues, Jira).
+0.1: the loop, recovery, the fence, the work log with the spirit's chat (`operator ui`),
+and MCP mode. Planned: ticket sources beyond markdown files (GitHub Issues, Jira).
 
 ## License
 
