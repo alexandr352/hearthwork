@@ -46,6 +46,7 @@ import signal
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -275,6 +276,20 @@ def _healthy(c, timeout=3):
             return 200 <= r.status < 400
     except Exception:
         return False
+
+
+def health_probe(c, timeout=3):
+    """(answered, what it said) for the health URL; (None, "") when none is set."""
+    url = c.get("health")
+    if not url:
+        return None, ""
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            return 200 <= r.status < 400, f"HTTP {r.status}"
+    except urllib.error.HTTPError as e:
+        return False, f"HTTP {e.code}"
+    except Exception as e:
+        return False, f"no answer ({getattr(e, 'reason', None) or e.__class__.__name__})"
 
 
 def status(p, probe_health=True):

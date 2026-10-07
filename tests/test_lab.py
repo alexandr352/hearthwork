@@ -206,7 +206,11 @@ class Server(LabFixture):
         self.assertIn("up", lab.up(p, owner=999999))
         self.assertEqual(lab.summary(p)[0], "UP")
         self.assertIn("lab: <span", worklog.lab_chip([p]))
+        r = subprocess.run([sys.executable, "-m", "hearthwork", "lab", "-p", "shop", "status"], capture_output=True,
+                           text=True, env=dict(os.environ, PYTHONPATH=str(HERE.parent / "src")))
+        self.assertIn(f"health: http://127.0.0.1:{port}/ — HTTP 200", r.stdout)
         self.assertTrue(lab.reap_orphan_server(p, echo=None), "a server whose run died is taken down")
+        self.assertIn("no answer", lab.health_probe(lab.conf(p), timeout=1)[1])
         self.assertEqual(lab.summary(p)[0], "DOWN")
 
 

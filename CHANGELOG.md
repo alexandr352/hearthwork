@@ -4,6 +4,12 @@ To update: `~/.hearthwork-venv/bin/pip install --upgrade git+https://github.com/
 then `operator upgrade`, then restart `operator ui`. Versions marked **upgrade** change the doctrine
 the operator or the spirit reads, so `operator upgrade` matters for them.
 
+## 0.3.3 (upgrade)
+- `operator lab status` asks the health URL itself and prints what came back (`HTTP 200`, `no answer`), and
+  names a missing health URL when the lab has a server.
+- The spirit knows its shell cannot reach the network or localhost (its fence, not the machine) and asks
+  `operator lab status` instead of guessing.
+
 ## 0.3.2
 - `operator lab config --from-atlas` works with an atlas drafted before 0.3.0: with no lab section, the
   test command comes from its "Run one test file" line, the example path replaced by `{files}`. It says so;

@@ -590,9 +590,14 @@ def cmd_lab(args):
             label, s = lab.summary(p)
             out(f"lab: {label}  ({p.name})")
             c = lab.conf(p)
-            for k in ("test", "lint", "build", "up", "health"):
+            for k in ("test", "lint", "build", "up"):
                 if c[k]:
                     out(f"  {k}: {c[k]}")
+            if c["health"]:
+                ok, said = lab.health_probe(c)
+                out(f"  health: {c['health']} — {said}" + ("" if ok else "  (the lab counts the server up only when it answers)"))
+            elif c["up"]:
+                out('  health: not set — operator lab config health "<a URL that answers when the app is ready>"')
             if not c["test"]:
                 out('  no test command yet: operator lab config --from-atlas, or operator lab config test "pytest -q {files}"')
             out(f"  scratch: {c['scratch']}/ (git-excluded)   A/B: {c['ab']}")

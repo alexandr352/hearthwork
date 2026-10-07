@@ -86,6 +86,10 @@ with the Read tool, not `cat`; the paths below are relative to this directory. R
   `operator lab ab <files>`: the tests on the uncommitted work and on HEAD, GUARDS when the
   test fails without the change and passes with it. `operator lab up` / `down` / `logs` for
   the server. A lab verb runs only on the person's machine and spends no quota.
+- YOU CANNOT REACH THE NETWORK OR LOCALHOST: your shell runs `operator` and read-only git and
+  nothing else, so a curl is refused by your fence, not by the machine. To know whether a
+  project's server answers, run `operator lab status`: it asks the health URL itself and says
+  what came back. Never tell the person the machine cannot reach localhost.
 - Read-only git in the repositories: `git -C <repo> log`, `status`, `diff`, `show`.
 
 ## The atlas
