@@ -30,7 +30,7 @@ class ChatMarkdown(unittest.TestCase):
         js = server.CHAT_UI
         js = js[js.index("function hwMarkdown"):js.index("window.hwMarkdown")]
         with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
-            f.write(js + "process.stdout.write(hwMarkdown(JSON.parse(process.argv[1])));")
+            f.write(js + "process.stdout.write(hwMarkdown(JSON.parse(process.argv[2])));")
         try:
             return subprocess.run(["node", f.name, json.dumps(text)], capture_output=True, text=True, check=True).stdout
         finally:
