@@ -44,6 +44,22 @@ Code style, test style and location, naming, error handling, anything a reviewer
 insist on, read from config and from the code itself. Branch and commit conventions if
 the repository states them.
 
+## The lab
+How a unit runs this repository's tests, each line the exact command, `{files}` standing for
+one or more test files (write `unknown` when the repository does not show it):
+- lab test: <the command that runs only the named test files, with {files}> [source]
+- lab lint: <the lint command, with {files} if it takes files> [source]
+- lab build: <only if tests need a build first> [source]
+- lab up: <only if tests need a running server: the command that starts it in the foreground> [source]
+- lab health: <the URL that answers once that server is up> [source]
+- lab scratch: <a folder that does NOT exist yet, where the test runner finds a throwaway test
+  named on its command line (it will be excluded from git whole, so never an existing folder):
+  e.g. tests/_scratch when the runner only collects under tests/; else .hearthwork-scratch> [source]
+- lab ab: worktree, or in-place when the tests run against the lab's server
+Each value is the bare command in backticks, or the single word unknown; never a sentence.
+Then two or three lines on writing a throwaway probe test here: the framework, which fixture
+or helper sets up the code under test, and one existing test to copy the setup from.
+
 ## Traps
 Things that would cost a newcomer an hour: generated files not to edit, slow or flaky
 suites, environment variables, ordering constraints, unusual tooling. Only what you saw

@@ -10,6 +10,10 @@ may edit it by hand.
 - Test one file: unknown yet
 - Lint: unknown yet
 
+## The lab
+- lab test: unknown yet
+- lab scratch: .hearthwork-scratch
+
 ## Where things are
 Unknown yet.
 

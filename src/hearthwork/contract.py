@@ -11,7 +11,7 @@ PROMPT_MAX = 24000
 MODES = ("STABILIZATION", "FEATURE", "REFACTOR", "CONFIGURATION", "MIGRATION", "AUDIT")
 
 
-def check_plan(plan, unit, open_chain=None):
+def check_plan(plan, unit, open_chain=None, lab_ready=False):
     """A list of deviations; empty when the plan keeps its contract."""
     if not isinstance(plan, dict):
         return ["the answer is not one JSON object"]
@@ -82,6 +82,13 @@ def check_plan(plan, unit, open_chain=None):
             dev.append("only the last phase of a chain commits")
         elif phase == total and kind != "execution":
             dev.append("the last phase of a chain is the committing execution")
+    if "lab" in plan and not isinstance(plan.get("lab"), bool):
+        dev.append('"lab" is true when the unit needs the lab\'s server up, else false or absent')
+    if lab_ready and mode == "STABILIZATION" and kind == "execution" and commit is True \
+            and "operator lab ab" not in prompt:
+        dev.append("a STABILIZATION commit proves its guard first: the prompt orders "
+                   "`operator lab ab <the guard test files>` and asks for its AB VERDICT line verbatim; "
+                   "it commits only on GUARDS")
     if open_chain and chain and chain != open_chain:
         dev.append(f'chain "{open_chain}" is open: finish it (or insert a read-only investigation) before another')
     if open_chain and not chain and kind == "execution":

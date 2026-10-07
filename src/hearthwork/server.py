@@ -30,8 +30,8 @@ MAX_BODY = 64 * 1024
 
 
 def stamp(h):
-    """Changes whenever any record the page shows changes."""
-    m = 0.0
+    """Changes whenever any record the page shows changes, and when a lab changes state."""
+    m, labels = 0.0, []
     for p in home.projects(h):
         for f in (p.units_log, p.state_path, p.dir / "atlas.md", p.dir / "running.json", p.dir / ".lock",
                   h / "usage.json"):
@@ -43,7 +43,17 @@ def stamp(h):
             m = max(m, p.tickets.stat().st_mtime)
         except OSError:
             pass
-    return m
+        for f in (p.dir / "lab").glob("*.json*") if (p.dir / "lab").is_dir() else ():
+            try:
+                m = max(m, f.stat().st_mtime)
+            except OSError:
+                pass
+        try:
+            from . import lab
+            labels.append(lab.status(p, probe_health=False).get("state", ""))
+        except Exception:
+            pass
+    return f"{m}|{','.join(labels)}"
 
 
 def repo_rows(h):

@@ -62,6 +62,25 @@ def next_step(project_name=None, h=None):
                     "why": "facts the draft could not find in the repository; every unit reads your answers.",
                     "command": f'operator atlas answer <n> "<your answer>" -p {p.name}   (operator atlas questions lists them)',
                     "ask": "Let's go through the open atlas questions, one at a time.", "project": p.name}
+    from . import lab
+    for p in projects:
+        if lab.status(p, probe_health=False)["state"] == "held":
+            return {"key": "lab-held", "title": f"Restore {p.name}'s work from the lab",
+                    "why": "an A/B stopped midway with your uncommitted work saved under a git ref; "
+                           "any lab verb puts it back and proves it.",
+                    "command": f"operator lab restore -p {p.name}",
+                    "ask": "The lab says a restore is held. What happened, and is my work safe?", "project": p.name}
+        if not lab.conf(p)["test"]:
+            try:
+                proposed = lab.from_atlas((p.dir / "atlas.md").read_text(encoding="utf-8"))
+            except OSError:
+                proposed = {}
+            if proposed.get("test"):
+                return {"key": "lab", "title": f"Set up {p.name}'s lab",
+                        "why": f"the atlas proposes how to run its tests ({proposed['test']}); units run "
+                               "named tests through the lab and prove a fix with its A/B.",
+                        "command": f"operator lab config --from-atlas -p {p.name}",
+                        "ask": "Let's set up the lab from the atlas. What does it propose?", "project": p.name}
     for p in projects:
         st = p.read_state()
         tid = st.get("active_ticket")

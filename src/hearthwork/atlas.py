@@ -15,7 +15,7 @@ from .home import doctrine, write_atomic
 from .loop import Loop
 from .records import Lock, now_iso
 
-HEADINGS = ["## What this is", "## How to run things", "## Where things are", "## Conventions",
+HEADINGS = ["## What this is", "## How to run things", "## Where things are", "## Conventions", "## The lab",
             "## Traps", "## Questions for the person"]
 
 

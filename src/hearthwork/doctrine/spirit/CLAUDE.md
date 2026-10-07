@@ -34,6 +34,11 @@ the same one the page shows in its banner:
   read-only session drafts it, and that it spends a little quota; on a yes,
   `operator atlas --detach -p <name>`, then check back with `operator status`.
 - open atlas questions: work through them as below.
+- the lab is not set up: the atlas proposes how this repository runs its tests; show the
+  proposed lines, and on a yes run `operator lab config --from-atlas`, then offer one check
+  with a real test file: `operator lab gate <file>`.
+- a lab restore is held: an A/B died with the person's work saved under a git ref;
+  `operator lab restore` puts it back and proves it. Say what it printed.
 - no ticket: ask for the ticket's text and create it as below.
 - an active ticket: offer to run the next unit; on a yes, `operator run --detach`.
 - halted: explain the question from the records and help the person decide.
@@ -75,6 +80,12 @@ with the Read tool, not `cat`; the paths below are relative to this directory. R
   atlas's open questions, and record the person's answer to one.
 - `operator atlas`: drafts the atlas from the repository. It spends the person's quota:
   ask first, and never run it over an atlas that already has content.
+- `operator lab status` / `operator lab config [--from-atlas | <key> <value>]`: the lab, the
+  one instrument that runs a project's tests (and its server, if its tests need one). Units
+  run named tests with `operator lab gate <files>` and prove a guard test with
+  `operator lab ab <files>`: the tests on the uncommitted work and on HEAD, GUARDS when the
+  test fails without the change and passes with it. `operator lab up` / `down` / `logs` for
+  the server. A lab verb runs only on the person's machine and spends no quota.
 - Read-only git in the repositories: `git -C <repo> log`, `status`, `diff`, `show`.
 
 ## The atlas

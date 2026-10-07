@@ -11,6 +11,13 @@ Every tool call of every session passes a PreToolUse hook (`fence.py`), default-
 | operator | read and write its own directory | anything else, including your repository |
 | spirit | read the home and the repositories; write its memory; `operator ...`; read-only git | everything else |
 
+The unit's step narrows the executor further: an **investigation** writes only in the scratch
+folder and never operates the lab's server; a **fix** writes no test outside the scratch folder
+(the guard step writes the real one); and no step takes work out of the tree by hand
+(`git stash`, `git restore`, `git checkout -- <file>`): the one road to a baseline is
+`operator lab ab`, which saves the work first and proves the restore. The executor may run
+`operator lab ...` and no other `operator` command.
+
 A path is checked by its real location, so quotes, `$HOME`, `~` and symbolic links (macOS's
 `/tmp`) do not hide it. Commands are judged by what actually runs: `timeout 60 git push` is a
 push.

@@ -33,6 +33,7 @@ class CallResult:
     models_used: list = field(default_factory=list)
     cache_ttl: str = "auto"
     mcp: bool = False
+    agents: dict = field(default_factory=dict)
     error: str | None = None
     walled: bool = False
 
@@ -154,7 +155,7 @@ class CostLedger:
 
 def run(*, claude_bin, cwd, prompt, model, timeout, label, costs, resume=None, tools=None,
         settings=None, setting_sources=None, append_system_prompt=None, add_dirs=(), env_extra=None,
-        strict_mcp=True):
+        strict_mcp=True, agents=None, plugin_dirs=()):
     """One `claude --print` call. Never raises for a failed call: the result says why."""
     # stream-json: the same final result as json, plus the rate-limit events the account's
     # usage is read from (the 5-hour session and the week), at no cost.
@@ -172,6 +173,10 @@ def run(*, claude_bin, cwd, prompt, model, timeout, label, costs, resume=None, t
         cmd += ["--append-system-prompt", append_system_prompt]
     for d in add_dirs:
         cmd += ["--add-dir", str(d)]
+    if agents:
+        cmd += ["--agents", json.dumps(agents)]
+    for d in plugin_dirs:
+        cmd += ["--plugin-dir", str(d)]
     if resume:
         cmd += ["--resume", resume]
     env = dict(os.environ)
@@ -207,6 +212,9 @@ def run(*, claude_bin, cwd, prompt, model, timeout, label, costs, resume=None, t
     res.cost_usd, res.cost_basis = costs.cost(res.session_id, res.cli_total_cost_usd, bool(resume))
     if isinstance(out.get("modelUsage"), dict):
         res.models_used = sorted(out["modelUsage"])
+    by_type = (out.get("subagent_stats") or {}).get("by_type") if isinstance(out.get("subagent_stats"), dict) else None
+    if isinstance(by_type, dict):
+        res.agents = {k: v for k, v in by_type.items() if isinstance(v, int) and v}
     if p.returncode != 0 or out.get("is_error"):
         res.error = f"session error: {str(out.get('result'))[:400]}"
         res.walled = walled(cwd, res.session_id or resume, res.error, t0)

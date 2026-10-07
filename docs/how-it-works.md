@@ -37,6 +37,49 @@ makes the one commit. Each chain has a **kind of work**, chosen by an ordered te
 | REFACTOR | structure changes, behaviour stays exactly the same |
 | AUDIT | a question: reading only, nothing is changed |
 
+Each kind has a shape, and each step its tool:
+
+| Kind | Steps |
+|---|---|
+| STABILIZATION | **reproduce** (a disposable probe measures the defect) → **fix** (product code only; the fence refuses a test here) → **guard** (the real test, proven by the lab's A/B, then the commit) |
+| FEATURE | **locate** → **build** → **cover** (tests, review, commit) |
+| REFACTOR | **census** (every consumer) → **apply** → **verify** (the existing tests, unchanged, green) |
+| CONFIGURATION | **locate** → **apply** |
+| MIGRATION | **survey** → one step at a time → **cutover** |
+| AUDIT | investigations only |
+
+## The lab and the proof
+
+A guard test means something only if it fails without the fix and passes with it. The lab
+proves that: `operator lab ab <test>` runs the test on the uncommitted work (CARRIED) and on
+HEAD with the test file kept (BASE), and answers **GUARDS** when it is red on BASE and green on
+CARRIED. A STABILIZATION commit must order it (the program checks the plan), and the program
+records the verdict itself, so the judge reads it like a git fact, never as the report's claim.
+
+By default BASE runs in a throwaway git worktree, so your checkout is never touched. When the
+tests run against the lab's server (`ab = "in-place"`), BASE swaps the files in the checkout:
+your work is saved under a git ref first, put back, and the restore is proven by comparing
+trees; an A/B that dies midway is finished by the next lab command.
+
+Disposable probes live in the project's **scratch folder**, excluded from git in your checkout
+only (`.git/info/exclude`), so a probe never shows as a change and never reaches a commit.
+
+## Sub-agents and skills
+
+The executor carries three sub-agents on a cheaper model (`reader` in `config.toml`,
+Sonnet by default), so the expensive one does only what needs it:
+
+- the **reader** answers one bounded question about the repository, with every fact cited;
+- the **prober** writes one disposable probe, runs it once through the lab, and reports what
+  it measured, verbatim;
+- the **reviewer** reads the whole uncommitted diff once before a commit, through five lenses
+  (the repository's rules, obvious bugs, the intent in history, the acceptance criteria,
+  forgotten changes).
+
+And three skills: the probe, the consumer census, and the self-review before a commit. They
+ride on each executor call (`--agents` and a plugin built in the home); nothing is written into
+your repository. The unit's card shows which sub-agents it called.
+
 ## Contracts
 
 Every answer the operator gives is one JSON object with a declared shape, and the program
@@ -79,13 +122,15 @@ Everything is plain files under `~/.hearthwork/projects/<name>/`:
 
 ```
 project.toml  knowledge.md  atlas.md  units.jsonl  state.json
+lab/          state, gates.jsonl, ab.jsonl, the lab's logs
 tickets/<ID>/
   ticket.md  rulings.md  plan.md  context-full.md
   units/NN/  plan.json  prompt.md  report.md  facts.md  verdict.json  before.json
 ```
 
 `units.jsonl` has one line per unit: each phase's model, seconds, tokens, cost and cache
-lifetime, the git facts, the verdict, and which economy switches were on. The work log, the
+lifetime, the git facts, the lab's gates and A/B verdicts, the sub-agents called, the verdict,
+and which economy switches were on. The work log, the
 archive and the stats pages are built from these files by code, never by a model.
 
 ## Cost

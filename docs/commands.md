@@ -25,6 +25,22 @@ Not sure what to do? `operator next` names the one next step and its command.
 | `operator atlas questions` | The questions the draft could not answer from the repository, and which are answered. |
 | `operator atlas answer <n> "<answer>"` | Record your answer under question `n` (it replaces an earlier one). |
 
+## The lab
+
+The one instrument that runs the project's tests, and its server if the tests need one.
+Units use it too; the fence holds them to it.
+
+| Command | What it does |
+|---|---|
+| `operator lab status` | What the lab is doing: READY, UP, DOWN, GATE, A/B, or RESTORE HELD; the last gate and A/B. Changes nothing. |
+| `operator lab config [--from-atlas \| <key> <value>]` | Show the `[lab]` keys, take the ones the atlas proposes, or set one (`test`, `lint`, `build`, `up`, `health`, `down`, `scratch`, `ab`). |
+| `operator lab gate <file...>` | Run the named test files once, under the lab's clock. Never a whole suite. |
+| `operator lab lint [file...]` | The lint command. |
+| `operator lab ab <file...> [--dry-run]` | The carried A/B: the named tests on your uncommitted work and on HEAD (the named files kept), and the verdict: GUARDS, PASSES-WITHOUT-CHANGE, BROKEN-BY-CHANGE or RED-AT-BOTH. `--dry-run` says what it would compare. Runs detached: closing the terminal never strands your work. |
+| `operator lab ab --last` | Follow the running (or last) A/B again. |
+| `operator lab restore` | Put back the work an A/B that died left saved under a git ref, and prove it. Any acting lab verb does this first anyway. |
+| `operator lab up \| down \| restart \| build [--force] \| logs [n]` | The server and the build, when the project has them. A unit that needs the server says so in its plan, and the loop raises it before the unit and takes it down after. |
+
 ## Tickets
 
 | Command | What it does |
@@ -67,5 +83,5 @@ Two files hold the rest, and are yours to edit:
 
 - `~/.hearthwork/config.toml`: models per role, timeouts, the sleep guard, the log's window.
 - `~/.hearthwork/projects/<name>/project.toml`: the repository, trunk, protected branches,
-  branch prefix, network commands the executor may use, `mcp_allow`, `co_author`, and
-  `repo_settings`.
+  branch prefix, network commands the executor may use, `mcp_allow`, `co_author`,
+  `repo_settings`, and the `[lab]` table.

@@ -238,6 +238,10 @@ def cmd_status(args):
             _open = [n for n, _, a in _qs if not a]
             out(f"  atlas: {len(_qs) - len(_open)} of {len(_qs)} questions answered"
                 + (f"; open: {', '.join(map(str, _open))} (operator atlas questions)" if _open else ""))
+        from . import lab as _lab
+        _label, _ls = _lab.summary(p)
+        out(f"  lab: {_label}" + ("" if _ls.get("test") else "  (no test command: operator lab config)")
+            + (f" — {_ls['detail']}" if _ls.get("detail") else ""))
         if st.get("halted"):
             h = st["halted"]
             out(f"  HALTED on {h.get('ticket')} unit {h.get('unit')}: {h.get('reason')}")
@@ -539,6 +543,136 @@ def cmd_doctor(args):
     return 0 if ok else 1
 
 
+# --- the lab -----------------------------------------------------------------------
+
+LAB_HELP = """the checkout's lab: its tests, its server, and the carried A/B
+  status            what the lab is doing (exit 3 when its server is down)
+  up | down | restart | build [--force] | logs [n]
+  gate <file...>    run the named test files once
+  lint [file...]
+  ab <file...>      the named tests on your uncommitted work and on HEAD: does the test guard the change?
+  ab --last         follow the running (or last) A/B again
+  restore           put back work an A/B that died left saved under a git ref (any acting verb does it too)
+  config            show the [lab] keys; config --from-atlas; config <key> <value>"""
+
+
+def cmd_lab(args):
+    from . import lab
+    verb, rest = args.verb, list(args.rest or [])
+    if rest and rest[0] == "--":
+        rest = rest[1:]
+    elif "--" not in rest:  # -p may also follow the verb: operator lab gate x.py -p shop
+        for flag in ("-p", "--project"):
+            if flag in rest[:-1]:
+                i = rest.index(flag)
+                args.project = rest[i + 1]
+                rest = rest[:i] + rest[i + 2:]
+    p = project_of(args)
+    try:
+        if verb == "_ab-body":
+            outp = os.environ.get("HEARTHWORK_AB_OUT")
+            rc = 1
+            try:
+                with lab.Locked(p):
+                    lab.recover(p)
+                    rc = lab.ab_body(p, rest)
+            except lab.LabError as e:
+                print(f"operator lab ab: {e}", flush=True)
+                rc = e.code
+            except Exception as e:
+                print(f"operator lab ab: failed: {e.__class__.__name__}: {e}", flush=True)
+                rc = 1
+            finally:
+                if outp:
+                    Path(outp).with_suffix(".rc").write_text(str(rc))
+            return rc
+        if verb == "status":
+            label, s = lab.summary(p)
+            out(f"lab: {label}  ({p.name})")
+            c = lab.conf(p)
+            for k in ("test", "lint", "build", "up", "health"):
+                if c[k]:
+                    out(f"  {k}: {c[k]}")
+            if not c["test"]:
+                out('  no test command yet: operator lab config --from-atlas, or operator lab config test "pytest -q {files}"')
+            out(f"  scratch: {c['scratch']}/ (git-excluded)   A/B: {c['ab']}")
+            if s.get("detail"):
+                out(f"  {s['detail']}")
+            g = s.get("gate_last")
+            if g:
+                out(f"  last gate: rc {g.get('rc')} on {', '.join(g.get('files') or [])} ({g.get('seconds')}s)")
+            a = s.get("ab_last")
+            if a:
+                out(f"  last A/B: {a.get('verdict')} on {', '.join(a.get('files') or [])}")
+            return 3 if s["state"] in ("down", "unhealthy") else 0
+        if verb == "config":
+            c = lab.conf(p)
+            if rest[:1] == ["--from-atlas"]:
+                keys = lab.from_atlas((p.dir / "atlas.md").read_text(encoding="utf-8"))
+                if not keys:
+                    return fail("the atlas proposes no lab commands (its \"## The lab\" section); set them: "
+                                "operator lab config test \"<command with {files}>\"")
+                if "scratch" in keys:
+                    try:
+                        lab.check_scratch(p, keys["scratch"])
+                    except lab.LabError as e:
+                        out(f"  scratch not taken: {e}")
+                        keys.pop("scratch")
+                lab.set_keys(p, keys)
+                lab.ensure_scratch(home.resolve_project(p.name))
+                for k, v in keys.items():
+                    out(f"  {k} = {v}")
+                out(f"written to {p.dir / 'project.toml'}; check them with: operator lab gate <one test file>")
+                return 0
+            if len(rest) == 2:
+                if rest[0] not in lab.KEYS:
+                    return fail(f"a lab key is one of: {', '.join(lab.KEYS)}")
+                lab.set_keys(p, {rest[0]: rest[1]})
+                lab.ensure_scratch(home.resolve_project(p.name))
+                out(f"  {rest[0]} = {rest[1]}")
+                return 0
+            for k in lab.KEYS:
+                out(f"  {k} = {c[k]!r}")
+            return 0
+        if verb == "logs":
+            out(lab.logs(p, int(rest[0]) if rest else 60))
+            return 0
+        if verb == "ab" and rest[:1] == ["--last"]:
+            return lab.follow(p)
+        if verb == "ab" and "--dry-run" in rest:
+            out(lab.ab_plan(p, [r for r in rest if r != "--dry-run"]))
+            return 0
+        if verb == "ab":
+            with lab.Locked(p):
+                lab.recover(p)
+            return lab.ab(p, rest)
+        with lab.Locked(p):
+            lab.recover(p)
+            if verb == "up":
+                out(lab.up(p))
+            elif verb == "down":
+                out(lab.down(p))
+            elif verb == "restart":
+                out(lab.restart(p))
+            elif verb == "restore":
+                if not lab.recover(p, echo=out):
+                    out("nothing to restore: no A/B left work behind")
+            elif verb == "build":
+                rc, msg = lab.build(p, force="--force" in rest)
+                out(msg)
+                return 0 if rc == 0 else 1
+            elif verb == "gate":
+                return lab.gate(p, rest)
+            elif verb == "lint":
+                return lab.lint(p, rest)
+            else:
+                return fail(f"unknown lab verb {verb!r}\n" + LAB_HELP)
+        return 0
+    except lab.LabError as e:
+        print(f"operator lab {verb}: {e}", file=sys.stderr)
+        return e.code
+
+
 # --- parser ----------------------------------------------------------------------
 
 def parser():
@@ -631,6 +765,12 @@ def parser():
     sp.add_argument("--port", type=int, default=0, help="default: a free port")
     sp.add_argument("--no-browser", action="store_true")
     sp.set_defaults(fn=cmd_ui)
+    sp = with_project(sub.add_parser("lab", help="the checkout's tests, server and carried A/B (operator lab status)",
+                                     description=LAB_HELP, formatter_class=argparse.RawDescriptionHelpFormatter))
+    sp.add_argument("verb", choices=["status", "up", "down", "restart", "build", "gate", "lint", "logs", "ab", "config", "restore", "_ab-body"],
+                    metavar="verb")
+    sp.add_argument("rest", nargs=argparse.REMAINDER)
+    sp.set_defaults(fn=cmd_lab)
     sub.add_parser("doctor", help="check the setup").set_defaults(fn=cmd_doctor)
     sub.add_parser("upgrade", help="refresh every project's operator doctrine from this version").set_defaults(fn=cmd_upgrade)
     return ap

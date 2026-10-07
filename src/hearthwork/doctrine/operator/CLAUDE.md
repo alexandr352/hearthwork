@@ -72,6 +72,29 @@ exactly what it names and answer again).
      T0 QUESTION    none holds: it is a question -> AUDIT (investigation only, no commit)
    A mixed ticket is split into chains, one mode each: fix a defect before building on it.
    The mode never appears in an executor prompt.
+4d. THE SHAPES. Each mode has a shape, and each step has its tool (the executor knows the
+   tools; you name the step and what it must establish):
+     STABILIZATION  reproduce (investigation: the prober measures the defect with a disposable
+                    probe; the reader maps the code around it) -> fix (execution: product code
+                    only, NO test is written here; the fence refuses one) -> guard (the last
+                    phase: writes the real test, runs `operator lab ab <the test files>`, and
+                    commits ONLY on AB VERDICT: GUARDS, after the self-review)
+     FEATURE        locate (investigation: the reader finds the surface and the precedent) ->
+                    build (execution) -> cover (the last phase: tests, gates, self-review, commit)
+     REFACTOR       census (investigation: every consumer, by the census skill) -> apply ->
+                    verify (the last phase: the existing tests named, green, unchanged; commit)
+     CONFIGURATION  locate -> apply (the last phase: commit)
+     MIGRATION      survey -> one execution per safe step -> cutover (the last phase: commit)
+     AUDIT          investigations only: the reader and the prober answer, nothing is changed
+   Name each step with its role word exactly as above; the fence narrows the executor by it.
+4e. THE LAB. The PLAN input carries THE LAB block: what the checkout's lab can run. When it
+   has a test command, gates run through `operator lab gate <files>` and a STABILIZATION
+   guard proves itself with `operator lab ab` (the program checks your prompt for it). When a
+   unit needs the lab's SERVER up (tests or probes against the running application), say
+   "lab": true and the loop raises it before the unit and takes it down after. When the lab
+   has no test command, say so in the prompt and ask for the atlas's test form instead; the
+   person sets the lab up with `operator lab config` (worth a halt only if the work cannot be
+   proven without it).
 4c. THE WORK LOG READS YOUR LABELS. A person who has never seen this tool follows the
    ticket on a page: give each unit its "mode" and its "role" (one short word for this
    step: reproduce, locate, probe, fix, build, guard, spec, verify, survey, apply, ...),
@@ -87,6 +110,7 @@ exactly what it names and answer again).
         "title": "<a short line: what this unit does>",
         "budget": "LOW" | "MEDIUM" | "HIGH" (investigation) | "NONE" (execution),
         "commit_expected": <true only on the committing execution>,
+        "lab": <true when the unit needs the lab's server up, else false>,
         "chain": "<name>" | null, "chain_phase": <n> | null, "chain_total": <m> | null,
         "chain_steps": ["<role of phase 1>", "...", "<role of phase m>"]  (when a chain opens),
         "prompt": "<the executor prompt, see below>",
@@ -124,8 +148,11 @@ EXECUTION prompts:
 - `TARGET FILES:` the files to read before touching anything;
 - `INVARIANTS:` what must stay true;
 - the smallest safe change first; the boundaries not to cross;
-- the GATES by name: the exact test files or commands to run, each once, with the
-  known pre-existing failures so a red gate can be attributed;
+- the GATES by name: the exact test files, run once each through `operator lab gate <files>`
+  (or the atlas's form when the lab has no test command), with the known pre-existing
+  failures so a red gate can be attributed;
+- on a STABILIZATION guard: `operator lab ab <the guard test files>`, its AB VERDICT line
+  quoted verbatim, and commit only on GUARDS;
 - whether to commit, and on the first execution of a ticket, to create the branch
   `<prefix><TICKET>-<slug>` from the trunk;
 - what to return beyond the standard report.
@@ -142,6 +169,12 @@ report.
    line is narrative and grounds nothing. Where the report and the REPOSITORY FACTS
    disagree (it claims a commit that git does not show, a clean tree that is dirty),
    THE FACTS WIN and you name the disagreement in your reason.
+1b. THE LAB block of the facts is the program's own record of every gate and A/B the unit ran
+   through the lab, and which sub-agents it called. A gate or verdict the report claims and
+   the block does not show did not run through the lab: name that. A STABILIZATION guard is
+   done only when the block shows `lab ab: GUARDS` for its test; PASSES-WITHOUT-CHANGE means
+   the test does not prove the fix (re-plan the guard), BROKEN-BY-CHANGE means the fix broke
+   it, RED-AT-BOTH means it fails for another reason (investigate before anything else).
 2. If a SURVEY is given, the executor died and the tree may hold finished work or a
    broken half-edit. Choose and name one: CONTINUE (the next unit verifies and completes
    what the tree holds, scoped smaller), ACCEPT (the work stands; mark it done), or HALT

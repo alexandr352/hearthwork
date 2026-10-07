@@ -28,6 +28,9 @@ unattended. What made that work was not prompting. It was structure:
   session with the deviation named; three in a row halt the loop and ask you.
 - **Investigation before execution.** No change is written on a hypothesis. Work that ends in
   one commit is a chain: what it needs to learn, the changes, and one committing unit.
+- **A fix is proven, not claimed.** The lab runs a guard test on your uncommitted work and on
+  HEAD: it must fail without the change and pass with it. Probes are disposable and never
+  reach a commit; a reader, a prober and a reviewer run on a cheaper model beside the executor.
 - **Nothing is lost when something stops.** A usage limit, a crash, a closed laptop: the next
   run resumes, or surveys the tree and judges what is there.
 - **You see everything.** A live page with every unit's prompt, report, git facts, verdict and
@@ -64,6 +67,7 @@ operator init
 operator project add shop --repo ~/code/shop
 operator atlas                 # one read-only session drafts the project's map
 operator atlas questions       # what only you know; answer with: operator atlas answer 1 "..."
+operator lab config --from-atlas   # how it runs your tests; check: operator lab gate <a test file>
 operator ticket new T-12 --title "Totals include tax" --file ticket.md
 operator run                   # one unit; read what it did
 operator run -n 0 --max-cost 5 # keep going until ready, a question, or $5
@@ -85,8 +89,8 @@ review it and push it yourself.
 ## Documentation
 
 - [docs/commands.md](docs/commands.md): every command.
-- [docs/how-it-works.md](docs/how-it-works.md): units, chains, contracts, recovery, memory,
-  the records.
+- [docs/how-it-works.md](docs/how-it-works.md): units, chains and their shapes, the lab and
+  its proof, sub-agents, contracts, recovery, memory, the records.
 - [docs/safety.md](docs/safety.md): the fence, repository hooks, commits, token economy, your
   limits, sleep, the page.
 - [docs/mcp.md](docs/mcp.md): working from your own Claude Code session.
@@ -95,8 +99,8 @@ review it and push it yourself.
 
 ## Status
 
-0.2: the loop and its recovery, the fence, the work log with archive and stats, the spirit,
-MCP mode, the atlas, token economy, your limits. Planned: ticket sources beyond text (GitHub
+0.3: the loop and its recovery, the lab and its A/B, sub-agents and skills, the fence by step,
+the work log with archive and stats, the spirit, MCP mode, the atlas, token economy, your limits. Planned: ticket sources beyond text (GitHub
 Issues, Jira).
 
 Security: see [SECURITY.md](SECURITY.md). License: MIT.

@@ -15,7 +15,8 @@ totals[sid] = round(totals.get(sid, 0) + 0.10, 4)
 (state / "totals.json").write_text(json.dumps(totals))
 with open(calls, "a") as f:
     f.write(json.dumps({"cwd": os.getcwd(), "resume": resume, "prompt": prompt[:4000], "argv": argv,
-                        "ttl": os.environ.get("CLAUDE_CODE_PROMPT_CACHE_TTL")}) + "\n")
+                        "ttl": os.environ.get("CLAUDE_CODE_PROMPT_CACHE_TTL"),
+                        "policy": os.environ.get("HEARTHWORK_FENCE_POLICY")}) + "\n")
 
 def envelope(result, is_error=False, code=0):
     print(json.dumps({"type": "system", "subtype": "init", "session_id": sid}))
@@ -47,15 +48,15 @@ if prompt.startswith("PHASE: PLAN") or prompt.startswith("DEVIATION") and "PLAN"
     (state / "last-unit").write_text(str(n))
     if n == 1:
         plan = {"action": "execute", "unit": 1, "kind": "investigation", "title": "find the total function",
-                "mode": "STABILIZATION", "role": "reproduce", "chain_steps": ["reproduce", "fix"],
+                "mode": "STABILIZATION", "role": "reproduce", "chain_steps": ["reproduce", "guard"],
                 "budget": "LOW", "commit_expected": False, "chain": "total", "chain_phase": 1, "chain_total": 2,
                 "prompt": "SCOPE CONSTRAINT: Read at most 2 files. Read at most 150 lines per file. Do not exceed these limits regardless of what you find. If the question cannot be answered within these limits, stop and report what you found and what remains unread.\nQUESTIONS: where is total computed?\nRETURN FORMAT: [N] File: <path> | Line: <line> | Finding: <fact> | Confidence: <high>",
                 "notes": "first look"}
     else:
         plan = {"action": "execute", "unit": n, "kind": "execution", "title": "fix the total and commit",
-                "mode": "STABILIZATION", "role": "fix",
+                "mode": "STABILIZATION", "role": "guard",
                 "budget": "NONE", "commit_expected": True, "chain": "total", "chain_phase": 2, "chain_total": 2,
-                "prompt": "The total now includes tax.\nTARGET FILES: total.txt\nINVARIANTS: nothing else changes\nCOMMIT: yes, on branch T-1-total",
+                "prompt": "The total now includes tax.\nTARGET FILES: total.txt\nINVARIANTS: nothing else changes\nPROVE: operator lab ab test_total.py, commit only on GUARDS\nCOMMIT: yes, on branch T-1-total",
                 "notes": "the fix"}
     envelope(json.dumps(plan))
 if prompt.startswith("PHASE: JUDGE"):
@@ -69,7 +70,7 @@ if prompt.startswith("ATLAS BUILD") or prompt.startswith("DEVIATION: return the 
         envelope("I looked around; it is a small Python project.")
     envelope("Here it is:\n# Atlas\n\n## What this is\nA tiny cart [README.md]\n\n## How to run things\n- Run one test file: "
              "python3 -m unittest test_cart [README.md]\n\n## Where things are\n- total.txt\n\n## Conventions\n"
-             "unknown\n\n## Traps\nnone seen\n\n## Questions for the person\n1. Which tests are slow?\n")
+             "unknown\n\n## The lab\n- lab test: python3 {files} [README.md]\n- lab scratch: .hearthwork-scratch\n\n## Traps\nnone seen\n\n## Questions for the person\n1. Which tests are slow?\n")
 if prompt.startswith("STATE SURVEY"):
     envelope("SURVEY: branch T-1-total, tree has total.txt modified, change looks complete")
 if prompt.startswith("Your session was interrupted"):
@@ -83,6 +84,21 @@ if flag("exec-wall"):
 if flag("exec-crash"):
     Path("total.txt").write_text("half an edit\n")
     sys.exit(3)
+if flag("exec-lab-ab") and "TARGET FILES" in prompt:
+    # a guard step: the fix and its test, proven through the lab, then committed
+    subprocess.run(["git", "checkout", "-q", "-b", "T-1-total"], capture_output=True)
+    Path("total.txt").write_text("total = price + tax\n")
+    Path("test_total.py").write_text("import sys\nsys.exit(0 if 'tax' in open('total.txt').read() else 1)\n")
+    hw = [os.environ["HW_PY"], "-m", "hearthwork", "lab"]
+    subprocess.run(hw + ["gate", "test_total.py"], capture_output=True)
+    out = subprocess.run(hw + ["ab", "test_total.py"], capture_output=True, text=True).stdout
+    subprocess.run(["git", "add", "total.txt", "test_total.py"], check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "Totals include tax"], check=True)
+    print(json.dumps({"type": "system", "subtype": "init", "session_id": sid}))
+    print(json.dumps({"type": "result", "result": "STATUS: success\n" + out, "is_error": False, "session_id": sid,
+                      "total_cost_usd": totals[sid], "modelUsage": {"fake-model": {}},
+                      "subagent_stats": {"by_type": {"hw-prober": 1, "hw-reviewer": 1}}}))
+    sys.exit(0)
 if "TARGET FILES" in prompt:
     subprocess.run(["git", "checkout", "-q", "-b", "T-1-total"], capture_output=True)
     Path("total.txt").write_text("total = price + tax\n")

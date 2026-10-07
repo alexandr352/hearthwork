@@ -51,6 +51,12 @@ GIT_DENY = {"push", "config", "remote", "reset", "rebase", "filter-branch", "fil
 READ_ONLY_DENY = {"rm", "mv", "cp", "touch", "mkdir", "rmdir", "ln", "chmod", "chown", "tee", "truncate", "dd",
                   "install", "patch", "make", "npm", "pnpm", "yarn", "bun", "npx", "cargo", "go", "mvn", "gradle",
                   "pip", "pip3", "uv", "poetry", "bundle", "gem", "composer", "docker", "podman"}
+# Taking work out of the tree by hand is how a fix gets stranded: the one road to a baseline
+# is `operator lab ab`, which saves the work first and proves the restore.
+GIT_BASELINE = {"stash", "restore"}
+LAB_SERVER_VERBS = {"up", "down", "restart", "build"}
+TEST_FILE = re.compile(r"(^|/)(tests?|__tests__|specs?|e2e)/|(^|/)(test_[^/]*\.py|[^/]*_test\.(py|go|rb|exs?)|"
+                       r"[^/]*\.(test|spec)\.[A-Za-z0-9]+|[^/]*_spec\.rb|[^/]*Tests?\.(java|kt|cs|swift))$")
 GIT_READ = {"status", "diff", "log", "show", "blame", "ls-files", "rev-parse", "merge-base", "rev-list",
             "describe", "shortlog", "reflog", "cat-file", "ls-tree", "name-rev", "for-each-ref", "grep", "branch"}
 
@@ -199,10 +205,25 @@ def shell_check(cmd, cwd, write_roots):
             return "eval, exec and nested shells (sh -c) are not allowed: run the command directly"
         if name in NETWORK_CMDS and not allowed_net:
             return "network commands are not allowed (add a command prefix to network_commands in project.toml)"
+        if name == "operator" or (name.startswith("python") and argv[1:3] == ["-m", "hearthwork"]):
+            words = argv[1:] if name == "operator" else argv[3:]
+            words = [w for i, w in enumerate(words) if not (w in ("-p", "--project") or (i and words[i - 1] in ("-p", "--project")))]
+            if not words or words[0] != "lab":
+                return "the executor runs `operator lab ...` and no other operator command"
+            verb = words[1] if len(words) > 1 else "status"
+            if verb == "_ab-body":
+                return "the A/B body is started by `operator lab ab`, never by hand"
+            if POLICY.get("kind") == "investigation" and verb in LAB_SERVER_VERBS:
+                return (f"an investigation does not operate the lab (`operator lab {verb}`): it reads and probes "
+                        "with lab status, gate, ab and logs; the loop brings the lab up for a unit that needs it")
+            continue
         if name == "git":
             verb, rest = git_verb(argv)
             if verb in GIT_DENY:
                 return f"git {verb} is not the loop's: the loop ends at committed local work"
+            if verb in GIT_BASELINE or (verb == "checkout" and "--" in rest):
+                return (f"git {verb} takes work out of the tree by hand: the one baseline is "
+                        "`operator lab ab <test files>`, which saves your work first and proves the restore")
             if verb == "commit":
                 if any(a in ("--no-verify", "-n", "--amend") for a in rest):
                     return "commits never skip hooks and never amend"
@@ -229,7 +250,11 @@ def shell_check(cmd, cwd, write_roots):
         tgt = m.group(1)
         if tgt.startswith("/dev/"):
             continue
-        if not under(norm(tgt, cwd), write_roots + TMP):
+        t = norm(tgt, cwd)
+        if POLICY.get("kind") == "investigation" and under(t, [os.path.realpath(POLICY["repo"])]) \
+                and not under(t, [os.path.realpath(POLICY.get("scratch") or "/nonexistent")]):
+            return f"an investigation changes nothing in the repository: {tgt} is not the scratch folder"
+        if not under(t, write_roots + TMP):
             return f"writing to {tgt} is outside the repository"
     if re.search(r"(?:^|[\s;&|])rm\s+(-\w*[rf]\w*\s+)+(/|~|\$HOME|\*)(\s|$)", body):
         return "rm on / or the home directory is not allowed"
@@ -265,10 +290,26 @@ def read_only_shell(cmd, cwd):
     return None
 
 
+def step_write(p, repo):
+    """The unit's step narrows where it may write: an investigation writes only probes in the
+    scratch folder; a fix writes no test outside it (the guard step writes the real test)."""
+    scratch = POLICY.get("scratch")
+    in_scratch = bool(scratch) and under(p, [os.path.realpath(scratch)])
+    if POLICY.get("kind") == "investigation" and not in_scratch and under(p, [repo]):
+        return ("an investigation changes nothing in the repository: a disposable probe goes in "
+                f"{os.path.relpath(scratch, repo) if scratch else 'the scratch folder'}/")
+    if POLICY.get("role") == "fix" and not in_scratch and under(p, [repo]) and TEST_FILE.search(os.path.relpath(p, repo)):
+        return ("a fix step writes no test: a probe goes in the scratch folder, and the guard step "
+                "writes the test that proves the fix")
+    return None
+
+
 def check_executor(tool, ti, cwd):
     repo = os.path.realpath(POLICY["repo"])
     read_only = bool(POLICY.get("read_only"))
     write_roots = list(TMP) if read_only else [repo] + TMP
+    if POLICY.get("kind") == "investigation" and POLICY.get("scratch") and not read_only:
+        write_roots = [os.path.realpath(POLICY["scratch"])] + TMP
     if tool in ("Read", "Grep", "Glob", "LS"):
         p = file_tool_path(ti)
         if not p:
@@ -286,6 +327,9 @@ def check_executor(tool, ti, cwd):
         if not p:
             deny(tool, "a write without a path")
         p = norm(p, cwd)
+        why = step_write(p, repo)
+        if why:
+            deny(tool, why, p)
         if not under(p, write_roots):
             deny(tool, f"{p} is outside the repository")
         if under(p, [os.path.join(repo, ".git")]):

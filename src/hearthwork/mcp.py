@@ -19,7 +19,7 @@ import sys
 import threading
 import time
 
-from . import __version__, home
+from . import __version__, home, lab
 from .home import doctrine
 from .loop import Loop
 
@@ -137,7 +137,12 @@ class Server:
                 "this lease and your full report. Show the person what you change as you go.\n\n"
                 "=== THE UNIT ===\n" + plan["prompt"] + "\n\n"
                 "=== HOW TO DO IT (the executor's rules) ===\n" + doctrine("executor", "EXECUTOR.md") +
-                "\n\n=== ATLAS (the project's map) ===\n" + atlas)
+                "\n\n=== ATLAS (the project's map) ===\n" + atlas +
+                "\n\n=== " + lab.brief(p).lstrip("# ") +
+                "\n\n=== IN YOUR SESSION ===\nThe hw-investigator, hw-prober and hw-reviewer sub-agents and the "
+                "hearthwork:hw-* skills ride only on hearthwork's own executor. Here, do their work yourself under the "
+                "same rules: probes only in the scratch folder, run once through `operator lab gate`; the guard "
+                "proven by `operator lab ab`; one review of the whole diff before a commit.")
         return text, False
 
     def tool_submit(self, args):

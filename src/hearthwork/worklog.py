@@ -259,7 +259,7 @@ def unit_card(p, rec, ui=False, files="embed", base=""):
 <details class="unit {state}" id="u-{esc(p.name)}-{esc(rec['ticket'])}-{n}">
   <summary><span class=dot></span><b>unit {n}</b>
     {f'<span class=chip>{esc(role)}</span>' if role else ''}<span class="chip {k}">{esc(KIND_WORD.get(k, k))}</span>
-    <span class=title>{esc(title)}</span>
+    <span class=title>{esc(title)}</span>{ab_chip(rec)}
     <span class=cost>{money(rec.get('cost_usd') or 0)}</span>
     {f'<span class=did>{esc(did)}</span>' if did else ''}</summary>
   <div class=body>
@@ -267,6 +267,7 @@ def unit_card(p, rec, ui=False, files="embed", base=""):
     <div class=verdict><b>{esc(v.get('action') or rec.get('outcome') or '')}</b> — {esc(v.get('reason') or '')}</div>
     {f'<div class=next>next: {esc(v.get("next"))}</div>' if v.get('next') else ''}
     <div class=phases>{phase_line(rec)}</div>
+    {lab_line(rec)}
     {f'<button class=ask data-ask="{esc(p.name)}|{esc(rec["ticket"])}|{n}">ask the spirit about this unit</button>' if ui else ''}
     <div class=files>{''.join(parts)}</div>
   </div>
@@ -368,6 +369,74 @@ def recent_units(h):
         return 20
 
 
+AB_CLASS = {"GUARDS": "good", "PASSES-WITHOUT-CHANGE": "warn", "BROKEN-BY-CHANGE": "bad", "RED-AT-BOTH": "bad"}
+
+
+def ab_chip(rec):
+    """The unit's last A/B verdict, beside its title: the proof a guard test guards."""
+    abs_ = ((rec.get("lab") or {}).get("ab")) or []
+    if not abs_:
+        return ""
+    v = abs_[-1].get("verdict") or "?"
+    return (f' <span class="chip ab {AB_CLASS.get(v, "")}" title="operator lab ab on '
+            f'{esc(", ".join(abs_[-1].get("files") or []))}">A/B {esc(v.lower().replace("-", " "))}</span>')
+
+
+def lab_line(rec):
+    """What the unit ran through the lab and which sub-agents it called, from the records."""
+    lab_ = rec.get("lab") or {}
+    bits = []
+    if lab_.get("up"):
+        bits.append(f"server up for the unit ({lab_.get('seconds', 0):.0f}s to start)")
+    elif lab_.get("error"):
+        bits.append("the server did not come up")
+    for g in lab_.get("gates") or []:
+        bits.append(f"gate rc {g.get('rc')} · {', '.join(g.get('files') or [])}")
+    for a in lab_.get("ab") or []:
+        bits.append(f"A/B {a.get('verdict')} · {', '.join(a.get('files') or [])}")
+    agents = rec.get("agents") or {}
+    if agents:
+        bits.append("sub-agents: " + ", ".join(f"{k.replace('hw-', '')} ×{v}" for k, v in sorted(agents.items())))
+    if not bits:
+        return ""
+    return "<div class=labline>" + "".join(f"<span>{esc(b)}</span>" for b in bits) + "</div>"
+
+
+LAB_CLASS = {"UP": "good", "READY": "good", "GATE": "busy", "A/B": "busy", "STARTING": "busy",
+             "DOWN": "", "UNHEALTHY": "bad", "RESTORE HELD": "bad", "—": ""}
+
+
+def lab_chip(projects):
+    """`lab: UP` beside "updated": each project's lab, live on the page."""
+    from . import lab
+    parts = []
+    for p in projects:
+        try:
+            label, s = lab.summary(p)
+        except Exception:
+            continue
+        c = lab.conf(p)
+        tip = [f"{p.name}: " + {"—": "no lab set up (operator lab config)", "READY": "tests run through the lab; no server needed",
+                                 "UP": "the server is up", "DOWN": "the server is down; a unit that needs it raises it",
+                                 "GATE": "a gate is running", "A/B": "an A/B is running",
+                                 "STARTING": "the server is starting", "UNHEALTHY": "the server runs but does not answer",
+                                 "RESTORE HELD": s.get("detail") or "a restore is held"}.get(label, label)]
+        if c["test"]:
+            tip.append(f"test: {c['test']}")
+        if c["health"]:
+            tip.append(f"health: {c['health']}")
+        if s.get("gate_last"):
+            g = s["gate_last"]
+            tip.append(f"last gate: rc {g.get('rc')} on {', '.join(g.get('files') or [])}")
+        if s.get("ab_last"):
+            tip.append(f"last A/B: {s['ab_last'].get('verdict')}")
+        name = f"{esc(p.name)} " if len(projects) > 1 else ""
+        parts.append(f'<span class="lab {LAB_CLASS.get(label, "")}" title="{esc(chr(10).join(tip))}">{name}{esc(label)}</span>')
+    if not parts:
+        return ""
+    return " · <span class=labs>lab: " + " ".join(parts) + "</span>"
+
+
 def render(home_path=None, ui=False):
     h = home_path or home.home_dir()
     projects = home.projects(h)
@@ -434,13 +503,13 @@ def render(home_path=None, ui=False):
   {usage_tiles()}
 </div>"""
     return page(sections="".join(sections) or "<p class=empty>No projects yet.</p>", banners="".join(banners),
-                stats=stats, ui=ui)
+                stats=stats, ui=ui, lab=lab_chip(projects))
 
 
 NAV = (("log", "Log", "worklog.html"), ("archive", "Archive", "archive/index.html"), ("stats", "Stats", "stats.html"))
 
 
-def page(sections, banners="", stats="", ui=False, title="Hearthwork Log", note=None, root="", nav="log", crumb=""):
+def page(sections, banners="", stats="", ui=False, title="Hearthwork Log", note=None, root="", nav="log", crumb="", lab=""):
     tabs = "".join(f'<a href="{root}{href}"{" aria-current=page" if key == nav else ""}>{label}</a>'
                    for key, label, href in NAV) + (f'<span class=crumb>/ {crumb}</span>' if crumb else "")
     return TEMPLATE.replace("{{NAV}}", tabs).replace("{{BANNERS}}", banners).replace("{{STATS}}", stats) \
@@ -449,6 +518,7 @@ def page(sections, banners="", stats="", ui=False, title="Hearthwork Log", note=
         .replace("{{UPDATED}}", time.strftime("%Y-%m-%d %H:%M", time.localtime())) \
         .replace("{{REFRESH}}", "" if ui or note else '<meta http-equiv=refresh content=60>') \
         .replace("{{NOTE}}", note or ("live" if ui else "refreshes every minute")) \
+        .replace("{{LAB}}", lab) \
         .replace("{{TITLE}}", esc(title)).replace("{{ROOT}}", root) \
         .replace("{{TOPBTN}}", '<button id=repos-btn class=theme aria-haspopup=dialog title="the repositories\' own Claude Code settings">repository</button>'
                  '<button id=eco-btn class=theme aria-haspopup=dialog title="what Claude calls carry">economy</button>'
@@ -602,10 +672,13 @@ dialog#help dt{font-weight:700;color:var(--accent);letter-spacing:.03em}dialog#h
 pre{white-space:pre-wrap;word-break:break-word;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;font:12.5px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;max-height:520px;overflow:auto}
 code{font:13px ui-monospace,Menlo,monospace}.empty{color:var(--mute)}
 .tools{display:flex;gap:8px}
+.labs .lab{font-weight:600;color:var(--mute);cursor:help}.labs .lab.good{color:var(--green)}.labs .lab.busy{color:var(--amber)}.labs .lab.bad{color:var(--red)}
+.labline{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0}.labline span{font-size:12px;color:var(--mute);border:1px dashed var(--line);border-radius:6px;padding:2px 7px}
+.chip.ab.good{border-color:var(--green);color:var(--green)}.chip.ab.warn{border-color:var(--amber);color:var(--amber)}.chip.ab.bad{border-color:var(--red);color:var(--red)}
 button.theme,a.theme{background:none;border:1px solid var(--line);color:var(--mute);border-radius:8px;padding:4px 10px;cursor:pointer;font:13px system-ui,sans-serif;text-decoration:none;line-height:normal}
 </style></head>
 <body><main id=log>
-<div class=top><h1>Hearthwork <small>updated {{UPDATED}} · {{NOTE}}</small></h1>
+<div class=top><h1>Hearthwork <small>updated {{UPDATED}} · {{NOTE}}{{LAB}}</small></h1>
 <span class=tools>{{TOPBTN}}<button class=theme onclick="var r=document.documentElement,d=r.dataset.theme==='dark'||(!r.dataset.theme&&matchMedia('(prefers-color-scheme: dark)').matches);r.dataset.theme=d?'light':'dark';try{localStorage.setItem('hw-theme',r.dataset.theme)}catch(e){}">theme</button><button class=theme onclick="document.getElementById('help').showModal()" aria-label="how to read this page" title="how to read this page">?</button></span></div>
 <nav class=tabs aria-label="pages">{{NAV}}</nav>
 {{BANNERS}}
@@ -629,6 +702,11 @@ button.theme,a.theme{background:none;border:1px solid var(--line);color:var(--mu
   </div>
   <h3>The kind of work, named after each ticket</h3>
   <dl>{{MODES}}</dl>
+  <h3>The lab</h3>
+  <p>The <b>lab</b> runs your project's tests (and its server, if the tests need one): units run
+  named test files through it, and prove a fix with its <b>A/B</b>, the test run on the uncommitted
+  work and again on HEAD. <b>A/B guards</b> means the test fails without the change and passes with
+  it. The header shows its state; set it up with <code>operator lab config</code>.</p>
   <h3>When it stops</h3>
   <p>When the operator needs a decision only you can make, the ticket <b>halts</b> with its question.
   Answer with <code>operator rule "…"</code>, or talk it through with the spirit. Your answer binds every

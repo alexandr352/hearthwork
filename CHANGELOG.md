@@ -4,6 +4,23 @@ To update: `~/.hearthwork-venv/bin/pip install --force-reinstall --no-deps git+h
 then `operator upgrade`, then restart `operator ui`. Versions marked **upgrade** change the doctrine
 the operator or the spirit reads, so `operator upgrade` matters for them.
 
+## 0.3.0 (upgrade)
+- **The lab**: `operator lab`, one instrument for a project's tests and, if they need one, its
+  server: `gate` runs named test files once, `ab` runs them on the uncommitted work and on HEAD
+  and says whether the test GUARDS the change. Kill-safe; a died A/B is finished by the next
+  lab command (`operator lab restore`). Set it up from the atlas: `operator lab config --from-atlas`.
+  The page shows `lab: …` beside "updated", live.
+- **Shapes**: each kind of work has its steps (STABILIZATION: reproduce → fix → guard), and a
+  STABILIZATION commit must prove its guard with the A/B. The judge reads the lab's verdicts from
+  the program's own records.
+- **Sub-agents and skills** on every executor call: a reader, a prober and a reviewer (Sonnet by
+  default, `reader` in config.toml), and the probe, census and self-review skills. Nothing is
+  written into your repository. The unit card shows which ran.
+- **The fence by step**: investigations write only probes in the git-excluded scratch folder; a
+  fix writes no test; `git stash`, `git restore` and `git checkout -- <file>` are refused in favour
+  of the A/B; the executor runs no `operator` command but `operator lab`.
+- The atlas drafts a "The lab" section; `operator next` and the spirit walk through setting it up.
+
 ## 0.2.6
 - A **repository** panel on the page: per project, override the repository's own Claude Code
   settings and rely on the fence. It names the hooks it finds and writes `project.toml`.

@@ -15,11 +15,14 @@ what the tree holds, and the operator judges on that instead of on a one-line fa
 
 import json
 import os
+import shutil
+import sys
 import time
 import uuid
+from pathlib import Path
 from dataclasses import dataclass, field
 
-from . import claude, contract, economy, fence, gitinfo
+from . import claude, contract, economy, fence, gitinfo, kit, lab
 from .home import doctrine, write_atomic
 from .records import Lock, Ticket, meter, now_iso, write_unit_file
 
@@ -96,7 +99,7 @@ class Loop:
             env_extra={**self._policy_env({"mode": "operator", "own_dir": str(self.p.dir)}),
                        **economy.ttl_env("operator", self.eco)})
 
-    def executor_call(self, prompt, label, model, timeout, resume=None, read_only=False, with_atlas=True):
+    def executor_call(self, prompt, label, model, timeout, resume=None, read_only=False, with_atlas=True, plan=None):
         atlas = ""
         try:
             atlas = (self.p.dir / "atlas.md").read_text(encoding="utf-8") if with_atlas else \
@@ -112,14 +115,37 @@ class Loop:
                            "conflict with the executor's doctrine above, the doctrine wins)\n\n" + own)
         policy = {"mode": "executor", "repo": str(self.p.repo), "protected": self.p.protected,
                   "network_commands": self.p.network_commands, "read_only": read_only,
-                  "co_author": self.p.co_author, "mcp_allow": self.p.mcp_allow if mcp else []}
+                  "co_author": self.p.co_author, "mcp_allow": self.p.mcp_allow if mcp else [],
+                  "scratch": str(lab.scratch_path(self.p))}
+        agents, plugins = None, ()
+        if not read_only:
+            plan = plan or {}
+            policy.update(kind=plan.get("kind"), role=plan.get("role"))
+            agents = kit.agents(self.models.get("reader") or "sonnet")
+            plugins = (kit.plugin_dir(),)
+            policy["read_roots"] = [str(d) for d in plugins]
+            system += "\n\n" + self._lab_brief()
         role = label if label in ("survey", "atlas") else "executor"
         return claude.run(
             claude_bin=self.bin, cwd=self.p.repo, prompt=prompt, model=model, timeout=timeout,
             label=label, costs=self.costs, resume=resume, tools=EXECUTOR_TOOLS,
             setting_sources=["project", "local"] if self.p.repo_settings else ["local"], settings=self._executor_settings(),
-            append_system_prompt=system, strict_mcp=not mcp,
-            env_extra={**self._policy_env(policy), **economy.ttl_env(role, self.eco)})
+            append_system_prompt=system, strict_mcp=not mcp, agents=agents, plugin_dirs=plugins,
+            env_extra={**self._policy_env(policy), **economy.ttl_env(role, self.eco), **self._path_env()})
+
+    def _lab_brief(self):
+        return lab.brief(self.p)
+
+    @staticmethod
+    def _path_env():
+        """`operator` on the executor's PATH, the same install that runs this loop."""
+        beside = Path(sys.executable).parent
+        where = beside if (beside / "operator").exists() else None
+        if where is None and shutil.which("operator"):
+            where = Path(shutil.which("operator")).parent
+        if where is None:
+            return {}
+        return {"PATH": f"{where}{os.pathsep}{os.environ.get('PATH', '')}"}
 
     def _executor_settings(self):
         s = self._settings(self.p.repo)
@@ -305,6 +331,12 @@ class Loop:
                                    report_text=report)
 
     def _unit(self, t, rec, recover_only=False):
+        try:
+            with lab.Locked(self.p, wait=60):
+                lab.recover(self.p, echo=self.log)
+                lab.reap_orphan_server(self.p, echo=self.log)
+        except lab.LabError as e:
+            self.log(f"the lab could not be checked: {e}")
         if t.read("lease.json") and not recover_only:
             rec["no_meter"] = True
             return Outcome("busy", "a unit is open in a Claude Code session (MCP): submit it there, "
@@ -384,10 +416,12 @@ class Loop:
             prompt += "\n" + gitinfo.plan_facts(self.p.repo, self.p.trunk) + "\n"
         except Exception as e:  # facts are evidence, never a gate
             prompt += f"\nREPOSITORY FACTS AT PLAN: unreadable ({e})\n"
+        lab_ready = bool(lab.conf(self.p)["test"])
+        prompt += "\n" + self._lab_brief().replace("# THE LAB OF THIS CHECKOUT", "THE LAB:") + "\n"
         self.log(f"{t.id} unit {n}: planning")
         self.progress(t, n, "planning")
         plan, stop = self._ask_operator(
-            t, prompt, "plan", lambda a: contract.check_plan(a, n, chain and chain["chain"]), "plan", rec)
+            t, prompt, "plan", lambda a: contract.check_plan(a, n, chain and chain["chain"], lab_ready), "plan", rec)
         if stop:
             return None, None, stop
         write_unit_file(t, n, "plan.json", json.dumps(plan, indent=2))
@@ -398,21 +432,65 @@ class Loop:
         for k in ("mode", "role"):
             if plan.get(k):
                 rec[k] = plan[k]
+        if plan.get("lab"):
+            rec["lab_requested"] = True
         if plan.get("chain"):
             t.write("chain.json", {"chain": plan["chain"], "phase": plan["chain_phase"] - 1,
                                    "total": plan["chain_total"], "unit": n})
         return n, plan, None
 
+    def _lab_up(self, t, rec, n, plan):
+        """Bring the lab's server up for a unit that asked for it. Returns (raised, blocked):
+        raised when this run started it (and takes it down after), blocked with the reason
+        when it would not come up."""
+        if not plan.get("lab") or not lab.conf(self.p)["up"]:
+            return False, None
+        self.progress(t, n, "starting the lab", plan.get("title"))
+        t0 = time.time()
+        try:
+            with lab.Locked(self.p):
+                lab.recover(self.p, echo=self.log)
+                if lab.status(self.p)["state"] in ("up",):
+                    return False, None
+                rc, msg = lab.build(self.p, echo=False)
+                if rc != 0:
+                    raise lab.LabError(f"the build failed (rc {rc}): {lab.logs(self.p, 30)}")
+                self.log(lab.up(self.p, echo=False, owner=os.getpid()))
+            rec["lab"] = {"up": True, "seconds": round(time.time() - t0, 1)}
+            return True, None
+        except lab.LabError as e:
+            rec["lab"] = {"up": False, "error": str(e)[:400]}
+            return False, str(e)
+
+    def _lab_down(self):
+        try:
+            with lab.Locked(self.p):
+                lab.down(self.p)
+        except lab.LabError as e:
+            self.log(f"the lab did not go down: {e}")
+
     def _execute(self, t, rec, n, plan, resume=None):
         before = resume["before"] if resume else gitinfo.snapshot(self.p.repo)
         write_unit_file(t, n, "before.json", json.dumps(before))
+        raised, blocked = self._lab_up(t, rec, n, plan)
+        if blocked:
+            self.log(f"{t.id} unit {n}: the lab did not come up; the operator judges that")
+            return self._after_execute(t, rec, n, plan, None, before, died=None, report_text=(
+                f"BLOCKED: the lab's server | it did not come up before the unit began: {blocked} | "
+                "fix the [lab] commands in project.toml (operator lab up shows the same), or plan the unit "
+                "without the lab\n"))
         self.log(f"{t.id} unit {n}: executing — {plan['title']}")
         self.progress(t, n, "executing", plan["title"])
-        if resume:
-            res = self.executor_call(RESUME_PROMPT, "execute-resume", self.models["executor"],
-                                     self.timeouts["execute"], resume=resume["session_id"])
-        else:
-            res = self.executor_call(plan["prompt"], "execute", self.models["executor"], self.timeouts["execute"])
+        try:
+            if resume:
+                res = self.executor_call(RESUME_PROMPT, "execute-resume", self.models["executor"],
+                                         self.timeouts["execute"], resume=resume["session_id"], plan=plan)
+            else:
+                res = self.executor_call(plan["prompt"], "execute", self.models["executor"], self.timeouts["execute"],
+                                         plan=plan)
+        finally:
+            if raised:
+                self._lab_down()
         rec["phases"].setdefault("execute", []).append(res.record())
         if not res.ok and res.walled:
             sid = res.session_id or (resume or {}).get("session_id")
@@ -439,6 +517,7 @@ class Loop:
         write_unit_file(t, n, "report.md", report)
         diff = gitinfo.compare(self.p.repo, before, gitinfo.snapshot(self.p.repo))
         facts = gitinfo.facts_block(diff, self.p.repo, self.p.trunk)
+        facts += self._lab_facts(t, n, rec)
         if died:
             facts += f"\nexecutor: FAILED ({died})"
         write_unit_file(t, n, "facts.md", facts)
@@ -447,6 +526,33 @@ class Loop:
                    "tree_clean": diff["tree_clean"], "exec_failed": bool(died)}
         t.write("judge-pending.json", pending)
         return self._judge(t, rec, n, pending)
+
+    def _lab_facts(self, t, n, rec):
+        """What the lab recorded for this unit, read by the program (never the report's claim)."""
+        gates = lab.gate_results(self.p, t.id, n)
+        abs_ = lab.ab_results(self.p, t.id, n)
+        agents = {}
+        for calls in rec.get("phases", {}).values():
+            for c in calls:
+                for k, v in (c.get("agents") or {}).items():
+                    agents[k] = agents.get(k, 0) + v
+        if gates or abs_:
+            rec.setdefault("lab", {}).update(
+                gates=[{"files": g["files"], "rc": g["rc"]} for g in gates],
+                ab=[{"files": a["files"], "verdict": a["verdict"]} for a in abs_])
+        if agents:
+            rec["agents"] = agents
+        lines = []
+        for g in gates:
+            lines.append(f"lab gate: rc {g['rc']} on {', '.join(g['files'])} ({g.get('seconds')}s)")
+        for a in abs_:
+            lines.append(f"lab ab: {a['verdict']} on {', '.join(a['files'])} "
+                         f"(CARRIED rc {a['carried']['rc']}, BASE rc {a['base']['rc']}): {lab.VERDICT_LINE[a['verdict']]}")
+        if agents:
+            lines.append("sub-agents: " + ", ".join(f"{k} x{v}" for k, v in sorted(agents.items())))
+        if not lines:
+            return "\nLAB: nothing ran through the lab in this unit\n"
+        return "\nLAB (read by the program from the lab's records):\n" + "\n".join(lines) + "\n"
 
     def _judge(self, t, rec, n, pending):
         rel = f"tickets/{t.id}/units/{n:02d}"

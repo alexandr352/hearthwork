@@ -41,6 +41,7 @@ executor = "opus"              # does the work in your checkout
 survey = "sonnet"              # reads the tree when an executor died without a report
 spirit = "sonnet"              # the one you talk to (operator chat, operator ui)
 atlas = "sonnet"               # drafts a new project's atlas (operator atlas)
+reader = "sonnet"              # the executor's sub-agents: the reader, the prober, the reviewer
 
 [timeouts]                     # seconds
 plan = 1800
@@ -87,6 +88,18 @@ mcp_allow = []
 # Commands the executor may use that reach the network (package installs, a tracker CLI).
 # Everything else that reaches the network is refused by the fence.
 network_commands = []
+
+# The lab: how this checkout runs its tests (and, if they need one, its server). Units run
+# named tests through `operator lab gate`, and prove a guard test with `operator lab ab`.
+# `operator lab config --from-atlas` fills this from the atlas; `operator lab` explains each key.
+[lab]
+test = ""                      # one or more test files: e.g. "pytest -q {{files}}", "npx vitest run {{files}}"
+lint = ""                      # e.g. "ruff check {{files}}"
+build = ""                     # only if tests need a build first
+up = ""                        # only if tests need a running server (it runs in its own process group)
+health = ""                    # the URL `up` waits for
+scratch = ".hearthwork-scratch"  # git-excluded folder for disposable probes (where the test runner finds them)
+ab = "worktree"                # worktree (your checkout is never touched) | in-place (tests against the server)
 """
 
 
@@ -127,6 +140,7 @@ class Project:
     co_author: bool = False
     repo_settings: bool = True
     mcp_allow: list = field(default_factory=list)
+    lab: dict = field(default_factory=dict)
 
     @property
     def tickets(self):
@@ -175,6 +189,7 @@ def load_project(pdir):
         co_author=bool(data.get("co_author", False)),
         repo_settings=bool(data.get("repo_settings", True)),
         mcp_allow=list(data.get("mcp_allow") or []),
+        lab=dict(data.get("lab") or {}),
     )
 
 
@@ -204,7 +219,9 @@ def set_repo_settings(project, use):
     if _re.search(r"(?m)^repo_settings\s*=", text):
         text = _re.sub(r"(?m)^repo_settings\s*=.*$", line, text)
     else:
-        text = text.rstrip("\n") + "\n" + line + "\n"
+        # a top-level key goes above the first [table], or TOML reads it as that table's
+        m = _re.search(r"(?m)^\[", text)
+        text = (text[:m.start()] + line + "\n\n" + text[m.start():]) if m else text.rstrip("\n") + "\n" + line + "\n"
     write_atomic(path, text)
 
 
@@ -276,6 +293,8 @@ def add_project(name, repo, trunk=None, home=None):
     (pdir / "tickets").mkdir(parents=True, exist_ok=True)
     (pdir / "project.toml").write_text(DEFAULT_PROJECT.format(name=name, repo=repo, trunk=trunk), encoding="utf-8")
     refresh_doctrine(pdir)
+    from . import lab
+    lab.ensure_scratch(load_project(pdir))
     for fname, src in (("knowledge.md", "knowledge-seed.md"), ("atlas.md", "atlas-seed.md")):
         if not (pdir / fname).exists():
             (pdir / fname).write_text(doctrine("operator", src), encoding="utf-8")

@@ -56,7 +56,7 @@ class ExecutorFence(unittest.TestCase):
         self.check("Bash", {"command": "git branch -D main"}, "deny")
         self.check("Bash", {"command": "git branch -f main HEAD"}, "deny")
         self.check("Bash", {"command": "git branch --show-current"}, "allow")
-        self.check("Bash", {"command": "git checkout -- cart.py"}, "allow")
+        self.check("Bash", {"command": "git checkout -- cart.py"}, "deny")   # a baseline is `operator lab ab`
         self.check("Bash", {"command": "git -C . reset --hard"}, "deny")
         self.check("Bash", {"command": "git commit -m 'Totals include tax'"}, "allow")
         self.check("Bash", {"command": "git commit -m 'Totals include tax\n\nCo-Authored-By: Claude <noreply@anthropic.com>'"}, "deny")
@@ -200,3 +200,60 @@ class NoPolicyDenies(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StepFence(unittest.TestCase):
+    """The unit's step narrows the executor: investigations probe only in the scratch folder,
+    a fix writes no test, and a baseline goes through `operator lab ab`."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.repo = os.path.realpath(cls.tmp.name)
+        subprocess.run(["git", "-C", cls.repo, "init", "-q", "-b", "T-1-work"], check=True)
+        cls.base = {"mode": "executor", "repo": cls.repo, "protected": ["main"], "network_commands": [],
+                    "scratch": os.path.join(cls.repo, ".hearthwork-scratch")}
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def check(self, extra, tool, ti, want):
+        self.assertEqual(ask(dict(self.base, **extra), tool, ti, self.repo), want, f"{extra} {tool} {ti}")
+
+    def test_investigation_writes_only_probes(self):
+        inv = {"kind": "investigation", "role": "reproduce"}
+        self.check(inv, "Write", {"file_path": f"{self.repo}/.hearthwork-scratch/probe_total.py"}, "allow")
+        self.check(inv, "Write", {"file_path": f"{self.repo}/src/app.py"}, "deny")
+        self.check(inv, "Bash", {"command": "echo x > src/app.py"}, "deny")
+        self.check(inv, "Bash", {"command": "echo x > .hearthwork-scratch/out.txt"}, "allow")
+        self.check(inv, "Bash", {"command": "operator lab gate .hearthwork-scratch/probe_total.py"}, "allow")
+        self.check(inv, "Bash", {"command": "operator lab ab tests/test_tax.py"}, "allow")
+        self.check(inv, "Bash", {"command": "operator lab up"}, "deny")
+        self.check(inv, "Bash", {"command": "operator lab build --force"}, "deny")
+
+    def test_fix_writes_no_test(self):
+        fix = {"kind": "execution", "role": "fix"}
+        self.check(fix, "Write", {"file_path": f"{self.repo}/src/app.py"}, "allow")
+        self.check(fix, "Edit", {"file_path": f"{self.repo}/tests/test_tax.py"}, "deny")
+        self.check(fix, "Edit", {"file_path": f"{self.repo}/src/cart.test.ts"}, "deny")
+        self.check(fix, "Write", {"file_path": f"{self.repo}/.hearthwork-scratch/test_probe.py"}, "allow")
+        guard = {"kind": "execution", "role": "guard"}
+        self.check(guard, "Write", {"file_path": f"{self.repo}/tests/test_tax.py"}, "allow")
+
+    def test_baseline_only_through_the_lab(self):
+        ex = {"kind": "execution", "role": "guard"}
+        self.check(ex, "Bash", {"command": "git stash"}, "deny")
+        self.check(ex, "Bash", {"command": "git stash pop"}, "deny")
+        self.check(ex, "Bash", {"command": "git restore src/app.py"}, "deny")
+        self.check(ex, "Bash", {"command": "git checkout HEAD -- src/app.py"}, "deny")
+        self.check(ex, "Bash", {"command": "git checkout -b T-1-fix main"}, "allow")
+        self.check(ex, "Bash", {"command": "timeout 600 operator lab ab tests/test_tax.py"}, "allow")
+
+    def test_only_the_lab_of_operator(self):
+        ex = {"kind": "execution", "role": "fix"}
+        self.check(ex, "Bash", {"command": "operator run -n 0"}, "deny")
+        self.check(ex, "Bash", {"command": "operator rule yes"}, "deny")
+        self.check(ex, "Bash", {"command": "python3 -m hearthwork run"}, "deny")
+        self.check(ex, "Bash", {"command": "operator lab _ab-body -- x"}, "deny")
+        self.check(ex, "Bash", {"command": "operator lab -p shop gate tests/test_tax.py"}, "allow")
