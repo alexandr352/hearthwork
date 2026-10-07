@@ -71,6 +71,15 @@ class AtlasTest(Fixture):
             cli.main(["status", "-p", "demo"])
         self.assertIn("atlas: 0 of 1 questions answered; open: 1", buf.getvalue())
 
+    def test_answer_changes_the_page_stamp(self):
+        from hearthwork import server
+        cli.main(["atlas", "-p", "demo"])
+        before = server.stamp(self.p.dir.parent.parent)
+        import time as _t
+        _t.sleep(0.02)
+        cli.main(["atlas", "-p", "demo", "answer", "1", "the gate is quick"])
+        self.assertGreater(server.stamp(self.p.dir.parent.parent), before, "the live page sees an answer")
+
     def test_extract(self):
         self.assertIsNone(atlas.extract("no atlas here"))
         good = "# Atlas\n" + "\n".join(h + "\nx\n" for h in atlas.HEADINGS)

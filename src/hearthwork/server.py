@@ -33,7 +33,7 @@ def stamp(h):
     """Changes whenever any record the page shows changes."""
     m = 0.0
     for p in home.projects(h):
-        for f in (p.units_log, p.state_path):
+        for f in (p.units_log, p.state_path, p.dir / "atlas.md"):
             try:
                 m = max(m, f.stat().st_mtime)
             except OSError:
@@ -412,7 +412,7 @@ form.onsubmit=async function(e){e.preventDefault();var text=input.value.trim();i
         if(ev.type==='text'){if(!got){out.dataset.raw='';got=true}out.dataset.raw+=ev.text;out.className='msg md';out.innerHTML=hwMarkdown(out.dataset.raw)}
         else if(ev.type==='tool'){var t=document.createElement('div');t.className='tool';t.textContent=ev.text;log.insertBefore(t,out);if(got){out=add('msg','');got=false}}
         else if(ev.type==='error'){add('msg err',ev.text)}
-        else if(ev.type==='done'){spent+=ev.cost_usd||0;costEl.textContent='$'+spent.toFixed(2)+' this page';add('meta-line','$'+(ev.cost_usd||0).toFixed(3)+' · '+ev.seconds+'s')}
+        else if(ev.type==='done'){spent+=ev.cost_usd||0;costEl.textContent='$'+spent.toFixed(2)+' this page';add('meta-line','$'+(ev.cost_usd||0).toFixed(3)+' · '+ev.seconds+'s');if(window.hwCheckNow)window.hwCheckNow()}
         log.scrollTop=log.scrollHeight;});}
     if(!got&&out.textContent==='…')out.remove();
   }catch(err){add('msg err',String(err))}finally{btn.disabled=false;input.focus()}};
@@ -435,11 +435,11 @@ ecoBox.addEventListener('change',function(e){var i=e.target,k=i.dataset.k,b={};b
 document.addEventListener('visibilitychange',function(){if(wantWake&&document.visibilityState==='visible'&&!wl)takeWake()});
 document.addEventListener('toggle',function(e){var d=e.target;if(!d.open||!d.dataset||!d.dataset.src||d.dataset.loaded)return;d.dataset.loaded='1';
   fetch(d.dataset.src).then(function(r){return r.ok?r.text():Promise.reject(r.status)}).then(function(t){d.querySelector('pre').textContent=t}).catch(function(x){d.querySelector('pre').textContent='could not load ('+x+')'})},true);
-var last=null;setInterval(async function(){try{var r=await fetch('/api/stamp',{headers:{'X-HW-Key':KEY}});var s=(await r.json()).stamp;
+var last=null;async function check(){try{var r=await fetch('/api/stamp',{headers:{'X-HW-Key':KEY}});var s=(await r.json()).stamp;
   if(last!==null&&s!==last){var html=await (await fetch('/api/log',{headers:{'X-HW-Key':KEY}})).text();var doc=new DOMParser().parseFromString(html,'text/html');
     var open=[].slice.call(document.querySelectorAll('#log details[open]')).map(function(d){return d.id});var fresh=doc.getElementById('log');
     if(fresh){document.getElementById('log').replaceWith(fresh);open.forEach(function(id){var d=id&&document.getElementById(id);if(d)d.open=true});paintTop()}}
-  last=s}catch(e){}},4000);
+  last=s}catch(e){}};window.hwCheckNow=check;setInterval(check,4000);
 })();
 </script>
 """

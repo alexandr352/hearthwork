@@ -305,8 +305,11 @@ def cmd_atlas(args):
         return fail(str(e))
     out(f"\natlas written: {path}  (${cost:.2f})")
     if qs:
-        out("\nIt could not find these in the repository. Answer them in the file (or ask the spirit to help):\n")
+        out("\nIt could not find these in the repository; only you know them:\n")
         out(qs)
+        out("\nAnswer them, one at a time with the spirit's help:")
+        out("  operator ui     then \"answer them with the spirit\" on the page")
+        out("or here:  operator atlas answer <n> \"your answer\"   (operator atlas questions lists them)")
     return 0
 
 
