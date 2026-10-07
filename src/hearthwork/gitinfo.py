@@ -77,7 +77,7 @@ def compare(repo, before, after):
     }
 
 
-def facts_block(diff):
+def facts_block(diff, repo=None, trunk=None):
     """The repository's account, as the judge reads it."""
     lines = [
         "REPOSITORY FACTS (read by the program from git, not from the report):",
@@ -95,4 +95,65 @@ def facts_block(diff):
         lines += [f"  {s}" for s in diff["uncommitted"][:200]]
         if len(diff["uncommitted"]) > 200:
             lines.append(f"  ... and {len(diff['uncommitted']) - 200} more")
+    if repo is not None and trunk:
+        lines += unmerged_lines(repo, trunk)
     return "\n".join(lines)
+
+
+def trunk_ref(repo, trunk):
+    for ref in (trunk, f"origin/{trunk}"):
+        try:
+            git(repo, "rev-parse", "--verify", "--quiet", ref)
+            return ref
+        except RuntimeError:
+            continue
+    return None
+
+
+def unmerged_branches(repo, trunk, limit=20):
+    """Local branches holding commits the trunk does not have: [(name, ahead, last subject)]."""
+    ref = trunk_ref(repo, trunk)
+    if not ref:
+        return []
+    try:
+        names = git(repo, "branch", "--no-merged", ref, "--format=%(refname:short)").split()
+    except RuntimeError:
+        return []
+    out = []
+    for name in names[:limit]:
+        try:
+            ahead = int(git(repo, "rev-list", "--count", f"{ref}..{name}").strip() or 0)
+            subject = git(repo, "log", "-1", "--format=%s", name).strip()
+        except (RuntimeError, ValueError):
+            ahead, subject = 0, ""
+        out.append((name, ahead, subject))
+    return out
+
+
+def plan_facts(repo, trunk):
+    """What the repository looks like as a unit is planned. Facts learned on a branch are
+    true only where that branch is: this tells the operator where the checkout stands."""
+    snap = snapshot(repo)
+    ref = trunk_ref(repo, trunk)
+    lines = ["REPOSITORY FACTS AT PLAN (read by the program from git):",
+             f"checkout: branch {snap['branch']} at {(snap['head'] or 'none')[:12]}",
+             f"trunk: {trunk}" + (f" at {(head_of(repo, ref) or '?')[:12]}" if ref else " (not found)"),
+             "tree: clean" if not snap["status"] else f"tree: NOT clean ({len(snap['status'])} paths)"]
+    lines += unmerged_lines(repo, trunk)
+    return "\n".join(lines)
+
+
+def unmerged_lines(repo, trunk):
+    branches = unmerged_branches(repo, trunk)
+    if not branches:
+        return [f"unmerged branches: none (everything is in {trunk})"]
+    lines = [f"unmerged branches (their commits are NOT in {trunk}):"]
+    lines += [f"  {name}: {ahead} commit(s) ahead, last: {subject}" for name, ahead, subject in branches]
+    return lines
+
+
+def head_of(repo, ref):
+    try:
+        return git(repo, "rev-parse", ref).strip()
+    except RuntimeError:
+        return None

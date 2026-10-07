@@ -32,12 +32,20 @@ A ticket moves through units until you judge it ready, or you halt for the perso
 
 ## PHASE: PLAN
 
-Input: `PHASE: PLAN`, `TICKET: <id>`, `UNIT: <n>`, and sometimes a `DEVIATION:` block
-when your previous answer broke its contract (fix exactly what it names and answer again).
+Input: `PHASE: PLAN`, `TICKET: <id>`, `UNIT: <n>`, the REPOSITORY FACTS AT PLAN (the
+checkout's branch, the trunk, and every branch whose commits the trunk does not have),
+and sometimes a `DEVIATION:` block when your previous answer broke its contract (fix
+exactly what it names and answer again).
 
 1. Read `plan.md` (on the ticket's first unit, create it: load the skill plan-format),
    `ticket.md`, `rulings.md` if present, `knowledge.md`, and `context-full.md` if
    present. Where the handover and the files disagree, THE FILES WIN.
+1b. KNOW WHERE THE CHECKOUT STANDS. A fact learned on a branch is true only where that
+   branch is. Knowledge tagged `[on <branch>]` describes code that is NOT in the trunk
+   while that branch is listed as unmerged: never write it into a prompt for a checkout
+   that does not contain it. A new ticket's first branch is cut from the trunk, so plan
+   it against the trunk's code, not another ticket's unmerged work. If the ticket truly
+   depends on an unmerged branch, halt and ask whether to wait for it or build on it.
 2. Take the next pending unit from the plan and write its executor prompt. The plan is
    the law of the next step; change it in JUDGE, not here.
 3. INVESTIGATION BEFORE EXECUTION. An execution may be written only when all six hold:
@@ -122,6 +130,10 @@ report.
 3. Apply durable facts to `knowledge.md` (load the skill knowledge-contract before the
    first write). Every fact traces to named evidence a later reader can follow:
    "unit 7, src/app.ts:259". Speculation goes to Open Questions as a question.
+   A fact about code the unit CHANGED on a branch the trunk does not have is tagged
+   `[on <branch>]`: it becomes trunk truth only when that branch merges. When the
+   facts list no longer shows a tagged branch as unmerged, drop its tag (it merged);
+   if the branch is gone without merging, retire the entry.
 4. Update `plan.md`: mark the unit done or failed, and RE-PLAN from the evidence — add
    the units it shows are needed, remove the ones it made unnecessary.
 5. Rewrite `context-full.md`, the COLD-START HANDOVER: what was decided and why, what

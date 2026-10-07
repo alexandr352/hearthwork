@@ -304,6 +304,10 @@ class Loop:
         rulings = t.path("rulings.md")
         if rulings.exists():
             prompt += "RULINGS: tickets/%s/rulings.md holds the person's answers; read it.\n" % t.id
+        try:
+            prompt += "\n" + gitinfo.plan_facts(self.p.repo, self.p.trunk) + "\n"
+        except Exception as e:  # facts are evidence, never a gate
+            prompt += f"\nREPOSITORY FACTS AT PLAN: unreadable ({e})\n"
         self.log(f"{t.id} unit {n}: planning")
         plan, stop = self._ask_operator(
             t, prompt, "plan", lambda a: contract.check_plan(a, n, chain and chain["chain"]), "plan", rec)
@@ -350,7 +354,7 @@ class Loop:
             report = f"EXECUTOR FAILED: {died}\n"
         write_unit_file(t, n, "report.md", report)
         diff = gitinfo.compare(self.p.repo, before, gitinfo.snapshot(self.p.repo))
-        facts = gitinfo.facts_block(diff)
+        facts = gitinfo.facts_block(diff, self.p.repo, self.p.trunk)
         if died:
             facts += f"\nexecutor: FAILED ({died})"
         write_unit_file(t, n, "facts.md", facts)

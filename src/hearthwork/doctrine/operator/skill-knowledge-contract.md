@@ -12,6 +12,11 @@ Settle all four before each update:
 - REPLACEMENT TARGET: named, whenever you Replace or Remove.
 - TICKET TAG: a fact useful only while this ticket is open is tagged `[<TICKET>]`, so it
   can be promoted or retired at the close.
+- BRANCH TAG: a fact about code changed on a branch the trunk does not have yet is
+  tagged `[on <branch>]`. It is not trunk truth until that branch merges: the repository
+  facts list the unmerged branches on every phase. Merged -> drop the tag; deleted
+  unmerged -> retire the entry. The close pass of a ticket whose branch is not merged
+  keeps its branch tags.
 
 Rules:
 - ONE PLACE PER FACT. Two entries that disagree are forbidden; the older is replaced.

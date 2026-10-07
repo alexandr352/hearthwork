@@ -74,6 +74,19 @@ class LoopTest(Fixture):
         self.assertIn("T-1", page)
         self.assertIn("ready", page)
 
+    def test_plan_and_judge_see_where_the_checkout_stands(self):
+        self.run_units(1)
+        self.run_units(1)  # unit 2 commits on T-1-total, which main does not have
+        subprocess.run(["git", "-C", str(self.repo), "checkout", "-q", "main"], check=True)
+        cli.main(["ticket", "new", "T-2", "--use", "--text", "Count items."])
+        self.run_units(1)
+        plans = [c["prompt"] for c in self.calls() if c["prompt"].startswith("PHASE: PLAN")]
+        self.assertIn("REPOSITORY FACTS AT PLAN", plans[0])
+        self.assertIn("unmerged branches: none", plans[0])
+        self.assertIn("checkout: branch main", plans[-1])
+        self.assertIn("T-1-total: 1 commit(s) ahead", plans[-1])
+        self.assertIn("unmerged branches", (self.t.unit_dir(2) / "facts.md").read_text())
+
     def test_every_cost_is_the_call_not_the_session(self):
         self.run_units(1)
         rows = read_meter(self.p)
