@@ -252,7 +252,12 @@ def serve(port=0, open_browser=True):
     Handler.h = h
     Handler.cfg = home.load_config(h)
     Handler.awake = awake.from_config(Handler.cfg, why="the hearthwork spirit is answering")
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    try:
+        httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    except OSError as e:
+        print(f"operator: cannot listen on 127.0.0.1:{port}: {e.strerror} "
+              "(another `operator ui` may be running; omit --port to take a free one)", flush=True)
+        return 2
     link = f"http://127.0.0.1:{httpd.server_address[1]}/?k={KEY}"
     print(f"hearthwork is served on this machine only:\n\n  {link}\n\nCtrl-C stops it.", flush=True)
     if open_browser and os.environ.get("DISPLAY") or open_browser and os.uname().sysname == "Darwin":
@@ -276,10 +281,19 @@ CHAT_UI = r"""
 <button id=chat-open class=pill hidden>Spirit</button>
 <div id=eco hidden role=dialog aria-label="token economy">
   <h4>Token economy <span id=eco-label></span></h4>
-  <p class=eco-note>What every Claude call carries. Changes apply from the next unit.</p>
-  <label><input type=checkbox data-k=mcp> <b>Your MCP servers</b><span>The executor gets your MCP servers, and may call only the tools a project names in <code>mcp_allow</code>. Off saves every server's tool list on every call.</span></label>
-  <label><input type=checkbox data-k=claude_md> <b>Your CLAUDE.md</b><span>Your ~/.claude/CLAUDE.md is added to the executor's instructions. Off: hearthwork's doctrine and the repository's own CLAUDE.md only.</span></label>
-  <label><input type=checkbox data-k=cache> <b>Cache policy</b><span>Operator and spirit keep a 1-hour prompt cache (they resume after long gaps); executor, survey and atlas a 5-minute one (cheaper). Off: the CLI decides.</span></label>
+  <p class=eco-note>What every Claude call carries. In each row the left option saves tokens and is the default. Changes apply from the next unit.</p>
+  <fieldset><legend>MCP servers</legend>
+    <div class=seg><label><input type=radio name=mcp value=off><span>none <i>saves tokens</i></span></label><label><input type=radio name=mcp value=on><span>yours</span></label></div>
+    <p>Yours: the executor gets your MCP servers, and may call only the tools a project lists in <code>mcp_allow</code>. Costs every server's tool list on every executor call (four connectors measured +3,200 tokens).</p>
+  </fieldset>
+  <fieldset><legend>Your ~/.claude/CLAUDE.md</legend>
+    <div class=seg><label><input type=radio name=claude_md value=off><span>left out <i>saves tokens</i></span></label><label><input type=radio name=claude_md value=on><span>included</span></label></div>
+    <p>Included: your own instructions join the executor's. Costs the file's length on every executor call.</p>
+  </fieldset>
+  <fieldset><legend>Prompt cache lifetime</legend>
+    <div class=seg><label><input type=radio name=cache value=policy><span>tuned per role <i>saves tokens</i></span></label><label><input type=radio name=cache value=auto><span>CLI default</span></label></div>
+    <p>Tuned: the operator and the spirit keep 1 hour, because they pick up again after long gaps; the executor keeps 5 minutes, which is cheaper to write. CLI default: one lifetime for every call. On a subscription that is 1 hour, so the executor pays more to write. On an API key it is 5 minutes, so the operator re-reads its whole conversation at every judgement.</p>
+  </fieldset>
   <p class=eco-note>Always: each role's own tools, no background tasks, the fence.</p>
 </div>
 <style>
@@ -307,9 +321,15 @@ body{padding-right:400px}@media(max-width:900px){body{padding-right:0}}
 #eco{position:fixed;top:64px;right:416px;width:min(380px,calc(100vw - 32px));background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;box-shadow:0 14px 36px rgba(0,0,0,.18);z-index:6}
 @media(max-width:900px){#eco{right:16px}}body.chat-hidden #eco{right:16px}
 #eco h4{margin:0 0 4px;font-size:15px}#eco-label{font-weight:400;color:var(--mute);font-size:12px}
-#eco label{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;align-items:start;margin:10px 0;cursor:pointer}
-#eco label input{grid-row:span 2;margin-top:3px;accent-color:var(--accent);width:16px;height:16px}
-#eco label span{grid-column:2;font-size:12.5px;color:var(--mute);line-height:1.45}
+#eco fieldset{border:0;margin:12px 0 0;padding:0}
+#eco legend{font-weight:700;font-size:13.5px;padding:0;margin-bottom:6px}
+#eco fieldset p{font-size:12.5px;color:var(--mute);line-height:1.45;margin:6px 0 0}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:99px;padding:2px;gap:2px;background:var(--bg)}
+.seg label{cursor:pointer}.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg span{display:inline-block;padding:4px 12px;border-radius:99px;font-size:13px;color:var(--mute)}
+.seg span i{font-style:normal;font-size:10.5px;color:var(--green);margin-left:4px}
+.seg input:checked+span{background:var(--panel);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.seg input:focus-visible+span{outline:2px solid var(--accent);outline-offset:1px}
 .eco-note{font-size:12px;color:var(--mute);margin:4px 0}
 #eco[hidden]{display:none}
 button.ask{background:none;border:1px solid var(--accent);color:var(--accent);border-radius:6px;padding:2px 8px;margin:6px 0;cursor:pointer;font-size:12px}
@@ -345,7 +365,7 @@ form.onsubmit=async function(e){e.preventDefault();var text=input.value.trim();i
   }catch(err){add('msg err',String(err))}finally{btn.disabled=false;input.focus()}};
 var ecoBox=document.getElementById('eco'),lastEco=null,wl=null,wantWake=false;
 function ecoBtn(){return document.getElementById('eco-btn')}
-function paintEco(d){if(d)lastEco=d;d=lastEco;if(!d)return;ecoBox.querySelectorAll('input').forEach(function(i){var k=i.dataset.k;i.checked=k==='cache'?d.economy.cache==='policy':!!d.economy[k]});
+function paintEco(d){if(d)lastEco=d;d=lastEco;if(!d)return;ecoBox.querySelectorAll('input').forEach(function(i){var v=d.economy[i.name];i.checked=(i.name==='cache'?v:(v?'on':'off'))===i.value});
   document.getElementById('eco-label').textContent='· '+d.label;var b=ecoBtn();if(b)b.textContent='economy: '+d.label}
 function paintWake(){var b=document.getElementById('wake');if(!b)return;b.hidden=!('wakeLock' in navigator);b.textContent=wl?'screen on ✓':'screen on';b.style.color=wl?'var(--green)':''}
 async function takeWake(){try{wl=await navigator.wakeLock.request('screen');wl.addEventListener('release',function(){wl=null;paintWake()})}catch(e){wl=null}paintWake()}
@@ -357,7 +377,7 @@ document.addEventListener('click',async function(e){
   if(e.target.closest('#wake')){wantWake=!wantWake;if(wantWake)await takeWake();else if(wl){await wl.release();wl=null;paintWake()}return}
   if(!ecoBox.hidden&&!ecoBox.contains(e.target))ecoBox.hidden=true});
 document.addEventListener('keydown',function(e){if(e.key==='Escape')ecoBox.hidden=true});
-ecoBox.addEventListener('change',function(e){var i=e.target,b={};b[i.dataset.k]=i.dataset.k==='cache'?(i.checked?'policy':'auto'):i.checked;
+ecoBox.addEventListener('change',function(e){var i=e.target,b={};b[i.name]=i.name==='cache'?i.value:i.value==='on';
   fetch('/api/economy',{method:'POST',headers:{'X-HW-Key':KEY,'Content-Type':'application/json'},body:JSON.stringify(b)}).then(function(r){return r.json()}).then(paintEco)});
 document.addEventListener('visibilitychange',function(){if(wantWake&&document.visibilityState==='visible'&&!wl)takeWake()});
 var last=null;setInterval(async function(){try{var r=await fetch('/api/stamp',{headers:{'X-HW-Key':KEY}});var s=(await r.json()).stamp;

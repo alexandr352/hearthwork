@@ -299,16 +299,12 @@ def cmd_economy(args):
     if args.reset:
         changes = dict(economy.DEFAULTS)
     eco = economy.save(changes) if changes else economy.load()
-    out(f"token economy: {economy.label(eco)}")
-    out(f"  mcp        {'on ' if eco['mcp'] else 'off'}  " + (
-        "the executor gets your MCP servers; it may call only the tools a project names in mcp_allow"
-        if eco["mcp"] else "no MCP server reaches any call"))
-    out(f"  claude_md  {'on ' if eco['claude_md'] else 'off'}  " + (
-        "your ~/.claude/CLAUDE.md is added to the executor's instructions"
-        if eco["claude_md"] else "the executor carries hearthwork's doctrine and the repository's own CLAUDE.md"))
-    out(f"  cache      {eco['cache']:6}  " + (
-        "operator and spirit 1 h, executor, survey and atlas 5 min"
-        if eco["cache"] == "policy" else "the Claude Code CLI decides"))
+    out(f"token economy: {economy.label(eco)}   (the first option of each row saves tokens and is the default)")
+    out(f"  MCP servers        {'yours' if eco['mcp'] else 'none':16} none | yours"
+        + ("   (the executor may call only the tools a project lists in mcp_allow)" if eco["mcp"] else ""))
+    out(f"  your CLAUDE.md     {'included' if eco['claude_md'] else 'left out':16} left out | included")
+    out(f"  prompt cache       {'tuned per role' if eco['cache'] == 'policy' else 'CLI default':16} tuned per role | CLI default"
+        + ("   (operator and spirit 1 h, executor 5 min)" if eco["cache"] == "policy" else ""))
     if eco["mcp"]:
         for p in home.projects():
             out(f"  {p.name}: mcp_allow = {p.mcp_allow or '[] (nothing may be called yet)'}")
