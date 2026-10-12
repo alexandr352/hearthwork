@@ -4,6 +4,9 @@ To update: `~/.hearthwork-venv/bin/pip install --upgrade git+https://github.com/
 then `operator upgrade`, then restart `operator ui`. Versions marked **upgrade** change the doctrine
 the operator or the spirit reads, so `operator upgrade` matters for them.
 
+## 0.3.7
+- The browser tab says hearthwork in lower case too: "hearthwork log", "stats · hearthwork", "archive · hearthwork".
+
 ## 0.3.6
 - The page's title reads hearth**work**, as on the social card: lower case, "work" in the accent colour.
 

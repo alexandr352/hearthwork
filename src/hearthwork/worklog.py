@@ -509,7 +509,7 @@ def render(home_path=None, ui=False):
 NAV = (("log", "Log", "worklog.html"), ("archive", "Archive", "archive/index.html"), ("stats", "Stats", "stats.html"))
 
 
-def page(sections, banners="", stats="", ui=False, title="Hearthwork Log", note=None, root="", nav="log", crumb="", lab=""):
+def page(sections, banners="", stats="", ui=False, title="hearthwork log", note=None, root="", nav="log", crumb="", lab=""):
     tabs = "".join(f'<a href="{root}{href}"{" aria-current=page" if key == nav else ""}>{label}</a>'
                    for key, label, href in NAV) + (f'<span class=crumb>/ {crumb}</span>' if crumb else "")
     return TEMPLATE.replace("{{NAV}}", tabs).replace("{{BANNERS}}", banners).replace("{{STATS}}", stats) \
@@ -549,7 +549,7 @@ def archive(h):
             target = root / p.name / f"{tid}.html"
             if stamps.get(key) != sig or not target.exists():
                 body = ticket_section(p, tid, trs, st, files="link", base="../../")
-                home.write_atomic(target, page(body, title=f"{tid} · Hearthwork", note=p.name, root="../../",
+                home.write_atomic(target, page(body, title=f"{tid} · hearthwork", note=p.name, root="../../",
                                                nav="archive", crumb=esc(tid)))
                 stamps[key] = sig
             first = min(ts(r) for r in trs)
@@ -567,7 +567,7 @@ def archive(h):
             + "".join(rows) +
             "<script>var f=document.getElementById('filter');f.oninput=function(){var q=f.value.toLowerCase();"
             "document.querySelectorAll('a.row').forEach(function(a){a.hidden=q&&a.dataset.q.indexOf(q)<0})}</script>")
-    home.write_atomic(root / "index.html", page(body, title="Archive · Hearthwork", note=f"{len(index)} tickets", root="../",
+    home.write_atomic(root / "index.html", page(body, title="archive · hearthwork", note=f"{len(index)} tickets", root="../",
                                                 nav="archive"))
     home.write_atomic(stamps_path, json.dumps(stamps))
     return root / "index.html"

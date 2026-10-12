@@ -229,7 +229,7 @@ usage limit resumed, a report judged on a later run, or a survey after a crash.<
 <h3>By kind of work</h3>
 {kind_table}
 {project_table}"""
-    page = worklog.page(body, title="Stats · Hearthwork", note="the whole history", nav="stats").replace("</style>", STYLE + "</style>", 1) \
+    page = worklog.page(body, title="stats · hearthwork", note="the whole history", nav="stats").replace("</style>", STYLE + "</style>", 1) \
         .replace("</body>", SCRIPT + "</body>", 1)
     path = h / "stats.html"
     home.write_atomic(path, page)
