@@ -594,7 +594,7 @@ TEMPLATE = """<!doctype html>
 :root[data-theme=dark]{--bg:#171513;--panel:#211e1b;--ink:#ece6dc;--mute:#9b9488;--line:#34302b;--green:#4fb37d;--amber:#e0a63a;--red:#e2614b;--accent:#e08a5a}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
 main{max-width:980px;margin:0 auto;padding:24px 16px 64px}
-h1{font-size:22px;margin:0}h1 small{color:var(--mute);font-weight:400;font-size:13px;margin-left:8px}
+h1{font-size:22px;margin:0}h1 span{color:var(--accent)}h1 small{color:var(--mute);font-weight:400;font-size:13px;margin-left:8px}
 h2{font-size:18px;margin:36px 0 12px}h2 .repo{color:var(--mute);font-weight:400;font-size:13px;margin-left:6px;word-break:break-all}
 h3{margin:0;font-size:16px}
 .top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
@@ -678,7 +678,7 @@ code{font:13px ui-monospace,Menlo,monospace}.empty{color:var(--mute)}
 button.theme,a.theme{background:none;border:1px solid var(--line);color:var(--mute);border-radius:8px;padding:4px 10px;cursor:pointer;font:13px system-ui,sans-serif;text-decoration:none;line-height:normal}
 </style></head>
 <body><main id=log>
-<div class=top><h1>Hearthwork <small>updated {{UPDATED}} · {{NOTE}}{{LAB}}</small></h1>
+<div class=top><h1>hearth<span>work</span> <small>updated {{UPDATED}} · {{NOTE}}{{LAB}}</small></h1>
 <span class=tools>{{TOPBTN}}<button class=theme onclick="var r=document.documentElement,d=r.dataset.theme==='dark'||(!r.dataset.theme&&matchMedia('(prefers-color-scheme: dark)').matches);r.dataset.theme=d?'light':'dark';try{localStorage.setItem('hw-theme',r.dataset.theme)}catch(e){}">theme</button><button class=theme onclick="document.getElementById('help').showModal()" aria-label="how to read this page" title="how to read this page">?</button></span></div>
 <nav class=tabs aria-label="pages">{{NAV}}</nav>
 {{BANNERS}}
