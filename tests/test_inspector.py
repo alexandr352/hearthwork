@@ -136,6 +136,27 @@ class Unit(Fixture):
         page = (Path(os.environ["HEARTHWORK_HOME"]) / "worklog.html").read_text()
         self.assertIn("Inspector", page)
 
+    def test_a_released_ticket_is_worked_as_visual(self):
+        self.config()
+        self.assertEqual(cli.main(["inspect", "-p", "demo"]), 0)
+        self.assertEqual(cli.main(["release", "pay", "--ticket", "UI-1", "-p", "demo"]), 0)
+        self.assertEqual(cli.main(["ticket", "use", "UI-1", "-p", "demo"]), 0)
+        self.flag("visual")
+        (self.state / "visual").write_text("e2e/pay.spec.js")
+        self.assertEqual(cli.main(["run", "-p", "demo"]), 0)
+        p = home.resolve_project("demo")
+        brief = (self.state / "plan-prompt.txt").read_text()
+        self.assertIn("RELEASED FROM THE INSPECTOR", brief)
+        self.assertIn(".hearthwork-scratch/released/pay/", brief)
+        self.assertTrue(list((self.repo / ".hearthwork-scratch" / "released" / "pay").iterdir()), "the cited frames were copied")
+        from hearthwork.records import Ticket
+        t = Ticket(p, "UI-1")
+        chain = json.loads(t.path("chain.json").read_text())
+        self.assertEqual((chain["mode"], chain["sighting"], chain["sighting_confidence"], chain["released_file"]),
+                         ("VISUAL", "still drawn", "high", "e2e/pay.spec.js"))
+        self.assertIn("VISUAL SIGHTING (read by the program): still drawn, confidence high: a fix may follow",
+                      (t.unit_dir(1) / "facts.md").read_text())
+
 
 if __name__ == "__main__":
     unittest.main()

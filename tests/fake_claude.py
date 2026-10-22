@@ -59,7 +59,15 @@ if prompt.startswith("PHASE: PLAN") or prompt.startswith("DEVIATION") and "PLAN"
     m = re.search(r"UNIT: (\d+)", prompt)
     n = int(m.group(1)) if m else int((state / "last-unit").read_text()) if (state / "last-unit").exists() else 1
     (state / "last-unit").write_text(str(n))
-    if n == 1 and (state / "family").exists():
+    if n == 1 and (state / "visual").exists():
+        (state / "plan-prompt.txt").write_text(prompt)
+        plan = {"action": "execute", "unit": 1, "kind": "investigation", "title": "look at the Pay button",
+                "mode": "VISUAL", "role": "look", "chain_steps": ["look", "fix", "guard"],
+                "released_file": (state / "visual").read_text().strip(),
+                "budget": "LOW", "commit_expected": False, "chain": "pay-ring", "chain_phase": 1, "chain_total": 3,
+                "prompt": "SCOPE CONSTRAINT: Read at most 2 files. Read at most 150 lines per file. Do not exceed these limits regardless of what you find. If the question cannot be answered within these limits, stop and report what you found and what remains unread.\nRUN: operator lab frames e2e/pay.spec.js\nRETURN: SIGHTING: and CANDIDATES: blocks; SIGHTING names the defect: still drawn = the user still meets it\nRETURN FORMAT: [N] File: <path> | Line: <line> | Finding: <fact> | Confidence: <high>",
+                "notes": "look"}
+    elif n == 1 and (state / "family").exists():
         plan = {"action": "execute", "unit": 1, "kind": "investigation", "title": "count the other totals",
                 "mode": "FAMILY", "role": "census", "chain_steps": ["census", "site-fix", "guard"],
                 "pattern_commit": (state / "family").read_text().strip(),
@@ -128,6 +136,10 @@ if "TARGET FILES" in prompt:
     subprocess.run(["git", "add", "total.txt"], check=True)
     subprocess.run(["git", "commit", "-q", "-m", "Totals include tax"], check=True)
     envelope("STATUS: success\nFILES CHANGED:\ntotal.txt\nGATES: none named")
+if "operator lab frames" in prompt:
+    envelope("SIGHTING: still drawn — t01-end.png | the Pay button shows no ring | confidence high\n"
+             "CANDIDATES: [1] app.css | 9 | outline none on .pay | remove it | high\n"
+             "[1] File: app.css | Line: 9 | Finding: .pay:focus outline none | Confidence: high")
 if "SITES:" in prompt:
     envelope("[1] File: total.txt | Line: 1 | Finding: total = price | Confidence: high\n"
              "PATTERN: abc1234 | adds tax | none\nSITES:\n[1] cart.txt | 1 | no tax | missing | Total\n"

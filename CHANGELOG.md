@@ -4,6 +4,23 @@ To update: `~/.hearthwork-venv/bin/pip install --upgrade git+https://github.com/
 then `operator upgrade`, then restart `operator ui`. Versions marked **upgrade** change the doctrine
 the operator or the spirit reads, so `operator upgrade` matters for them.
 
+## 0.6.0 (upgrade)
+- **VISUAL**, an eighth kind of work: a ticket you released from the inspector is worked one chain per
+  released test file, tested before every other kind. **look** (an investigation: it pictures the page as
+  the checkout stands, reads the frames the inspector cited, and answers SIGHTING: still drawn, gone or
+  cannot show, with CANDIDATES) -> **fix** (product code only) -> **guard** (the test gains an assertion
+  that sees the defect, the page is pictured again, `operator lab ab` proves the test, the commit).
+- The program reads the SIGHTING line of every investigation while the chain is open and accepts a fix
+  only on "still drawn" at high confidence; "gone" voids the chain. A released ticket's plan input names
+  each released file with the frames its findings cite, copied into the scratch folder for the executor.
+  The inspector closes it: its next look at the newer commit says fixed or still seen.
+- One SIGHTING line per released finding: a fix may follow when any finding is still drawn at high
+  confidence, and answers those. The words name the state of the DEFECT ("still drawn" = the user still
+  meets it, even when what is missing is a ring), and the look's prompt must define them so.
+- `operator lab frames <test file>`: one UI test file run as the checkout stands (uncommitted work
+  included), on the inspector's port, printing the frames a user sees after each step and the settled end
+  screenshot, saved in the scratch folder. No judge, nothing spent; the executor may run it.
+
 ## 0.5.0 (upgrade)
 - **The inspector**: `operator inspect` runs your Playwright UI tests in a git worktree of its own, on a
   port of its own, cuts the frames a user would see after each step from the trace (each with its timing;

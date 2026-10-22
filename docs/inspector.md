@@ -42,6 +42,10 @@ file, with the others listed as also seen there.
 
 `operator box` shows what is waiting. `operator release 1 --ticket UI-1` (or `release pay
 --ticket UI-1`) writes the chosen files' findings into a new ticket, ready for `operator run`.
+The operator works a released ticket as VISUAL, one chain per file: a **look** (`operator lab
+frames <file>` pictures the page as your checkout stands, beside the frames the inspector
+cited, copied into the scratch folder), a **fix**, and a **guard** that makes the test assert
+what the picture showed, so it catches the defect next time.
 The next look at a newer commit decides: **fixed** when nothing to fix is left, **still seen**
 when something is, and a still-seen file waits in the box again.
 

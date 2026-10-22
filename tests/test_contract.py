@@ -167,3 +167,74 @@ class Family(unittest.TestCase):
                 "next": "re-plan", "reason": "no further site"}
         self.assertEqual(contract.check_verdict(dict(good, chain_void=True)), [])
         self.assertTrue(contract.check_verdict(dict(good, chain_void="yes")))
+
+
+REL = ["e2e/pay.spec.js"]
+
+
+def look(**kw):
+    p = inv(mode="VISUAL", role="look", chain="pay-ring", chain_phase=1, chain_total=3,
+            chain_steps=["look", "fix", "guard"], released_file="e2e/pay.spec.js",
+            prompt=SCOPE + "\nRUN: operator lab frames e2e/pay.spec.js\nRETURN: SIGHTING: and CANDIDATES: blocks; "
+                   "SIGHTING names the defect: still drawn = the user still meets it\n" + GRAMMAR)
+    p.update(kw)
+    return p
+
+
+VOPEN = {"chain": "pay-ring", "mode": "VISUAL", "phase": 1, "total": 3, "sighting": "still drawn",
+         "sighting_confidence": "high"}
+SEEN = "SIGHTING: still drawn — t01-end.png | no ring on Pay | confidence high\n"
+
+
+def vfix(**kw):
+    p = exe(unit=2, mode="VISUAL", role="fix", chain="pay-ring", chain_phase=2, chain_total=3, commit_expected=False,
+            prompt="Pay shows focus.\n" + SEEN + "TARGET FILES: app.css\nINVARIANTS: other buttons keep their ring")
+    p.update(kw)
+    return p
+
+
+class Visual(unittest.TestCase):
+    def test_sighting(self):
+        self.assertEqual(contract.sighting(SEEN), ("still drawn", "high"))
+        self.assertEqual(contract.sighting("x\nSIGHTING: gone — frames t01 | ring shows | confidence: medium"), ("gone", "medium"))
+        self.assertEqual(contract.sighting("no line"), (None, None))
+        two = SEEN + "SIGHTING: cannot show — t01-end.png | placeholder not measured | confidence medium\n"
+        self.assertEqual(contract.sighting(two), ("still drawn", "high"), "one finding still drawn is enough for a fix")
+        self.assertEqual(len(contract.sightings(two)), 2)
+        self.assertEqual(contract.sighting("SIGHTING: gone | a | confidence high\nSIGHTING: gone | b | confidence low"),
+                         ("gone", "low"))
+        self.assertEqual(contract.sighting("SIGHTING: gone | a | confidence high\nSIGHTING: cannot show | b | confidence low"),
+                         ("cannot show", "low"))
+
+    def test_opens_only_on_a_release_with_a_look(self):
+        self.assertEqual(contract.check_plan(look(), 1, released=REL), [])
+        self.assertTrue(contract.check_plan(look(), 1), "no release, no VISUAL")
+        self.assertTrue(contract.check_plan(look(released_file="e2e/other.spec.js"), 1, released=REL))
+        self.assertTrue(contract.check_plan(look(role="reproduce"), 1, released=REL))
+        self.assertTrue(contract.check_plan(look(prompt=SCOPE + "\nlook at it\n" + GRAMMAR), 1, released=REL))
+        undefined = look(prompt=SCOPE + "\nRUN: operator lab frames e2e/pay.spec.js\nRETURN: SIGHTING: and CANDIDATES:\n" + GRAMMAR)
+        self.assertTrue(any("state of the DEFECT" in d for d in contract.check_plan(undefined, 1, released=REL)))
+
+    def test_a_fix_needs_it_still_drawn_at_high_confidence(self):
+        self.assertEqual(contract.check_plan(vfix(), 2, "pay-ring", chain_state=VOPEN, released=REL), [])
+        for state, why in ((dict(VOPEN, sighting_confidence="medium"), "medium"), (dict(VOPEN, sighting="gone"), "void"),
+                           ({k: v for k, v in VOPEN.items() if not k.startswith("sighting")}, "no SIGHTING")):
+            devs = contract.check_plan(vfix(), 2, "pay-ring", chain_state=state, released=REL)
+            self.assertTrue(any(why in d for d in devs), devs)
+        self.assertTrue(contract.check_plan(vfix(prompt="Pay.\nTARGET FILES: a\nINVARIANTS: none other at all here"), 2,
+                                            "pay-ring", chain_state=VOPEN, released=REL))
+        self.assertTrue(contract.check_plan(vfix(chain_total=4), 2, "pay-ring", chain_state=VOPEN, released=REL))
+
+    def test_the_guard_pictures_and_proves(self):
+        g = exe(unit=3, mode="VISUAL", role="guard", chain="pay-ring", chain_phase=3, chain_total=3,
+                prompt="Pay shows focus.\n" + SEEN + "TARGET FILES: e2e/pay.spec.js\nINVARIANTS: none\n"
+                       "SEE: operator lab frames e2e/pay.spec.js\nPROVE: operator lab ab e2e/pay.spec.js\nCOMMIT: yes")
+        st = dict(VOPEN, phase=2)
+        self.assertEqual(contract.check_plan(g, 3, "pay-ring", lab_ready=True, chain_state=st, released=REL), [])
+        self.assertTrue(contract.check_plan(dict(g, prompt=g["prompt"].replace("operator lab frames", "look")), 3,
+                                            "pay-ring", chain_state=st, released=REL))
+        self.assertTrue(contract.check_plan(dict(g, prompt=g["prompt"].replace("operator lab ab", "run")), 3,
+                                            "pay-ring", lab_ready=True, chain_state=st, released=REL))
+
+    def test_a_probe_insert_may_join(self):
+        self.assertEqual(contract.check_plan(inv(unit=2), 2, "pay-ring", chain_state=VOPEN, released=REL), [])

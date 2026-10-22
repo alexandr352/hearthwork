@@ -553,7 +553,8 @@ LAB_HELP = """the checkout's lab: its tests, its server, and the carried A/B
   ab <file...>      the named tests on your uncommitted work and on HEAD: does the test guard the change?
   ab --last         follow the running (or last) A/B again
   restore           put back work an A/B that died left saved under a git ref (any acting verb does it too)
-  config            show the [lab] keys; config --from-atlas; config <key> <value>"""
+  config            show the [lab] keys; config --from-atlas; config <key> <value>
+  frames <file>     run one UI test file here, as the checkout stands, and cut the frames a user sees (the inspector's port)"""
 
 
 def cmd_lab(args):
@@ -648,6 +649,15 @@ def cmd_lab(args):
         if verb == "logs":
             out(lab.logs(p, int(rest[0]) if rest else 60))
             return 0
+        if verb == "frames":
+            from . import inspector
+            if len(rest) != 1:
+                return fail("operator lab frames <one UI test file>")
+            try:
+                return inspector.frames_here(p, rest[0], echo=out)
+            except inspector.InspectError as e:
+                print(f"operator lab frames: {e}", file=sys.stderr)
+                return e.code
         if verb == "ab" and rest[:1] == ["--last"]:
             return lab.follow(p)
         if verb == "ab" and "--dry-run" in rest:
@@ -887,7 +897,7 @@ def parser():
     sp.set_defaults(fn=cmd_ui)
     sp = with_project(sub.add_parser("lab", help="the checkout's tests, server and carried A/B (operator lab status)",
                                      description=LAB_HELP, formatter_class=argparse.RawDescriptionHelpFormatter))
-    sp.add_argument("verb", choices=["status", "up", "down", "restart", "build", "gate", "lint", "logs", "ab", "config", "restore", "_ab-body"],
+    sp.add_argument("verb", choices=["status", "up", "down", "restart", "build", "gate", "lint", "logs", "ab", "config", "restore", "frames", "_ab-body"],
                     metavar="verb")
     sp.add_argument("rest", nargs=argparse.REMAINDER)
     sp.set_defaults(fn=cmd_lab)

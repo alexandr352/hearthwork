@@ -417,12 +417,16 @@ class Loop:
         except Exception as e:  # facts are evidence, never a gate
             prompt += f"\nREPOSITORY FACTS AT PLAN: unreadable ({e})\n"
         lab_ready = bool(lab.conf(self.p)["test"])
+        released = (t.read("meta.json") or {}).get("released_files") or []
+        if released:
+            prompt += "\n" + self._released_brief(t, released) + "\n"
         prompt += "\n" + self._lab_brief().replace("# THE LAB OF THIS CHECKOUT", "THE LAB:") + "\n"
         self.log(f"{t.id} unit {n}: planning")
         self.progress(t, n, "planning")
         plan, stop = self._ask_operator(
             t, prompt, "plan", lambda a: contract.check_plan(a, n, chain and chain["chain"], lab_ready, chain_state=chain,
-                                                             sha_known=self._commit_known), "plan", rec)
+                                                             sha_known=self._commit_known, released=released),
+            "plan", rec)
         if stop:
             return None, None, stop
         write_unit_file(t, n, "plan.json", json.dumps(plan, indent=2))
@@ -442,9 +446,37 @@ class Loop:
                 state["grown"] = True
             if plan.get("pattern_commit"):
                 state["pattern_commit"] = plan["pattern_commit"]
+            if plan.get("released_file"):
+                state["released_file"] = plan["released_file"]
             state.update(chain=plan["chain"], phase=plan["chain_phase"] - 1, total=plan["chain_total"], unit=n)
             t.write("chain.json", state)
         return n, plan, None
+
+    def _released_brief(self, t, released):
+        """The release this ticket carries: each file, and the frames its findings were seen in,
+        copied into the scratch folder so the executor can read them (the inspector's own folder
+        is not the executor's)."""
+        from . import box as boxmod
+        b = boxmod.load(self.p)
+        dest = lab.scratch_path(self.p) / "released"
+        lines = ["RELEASED FROM THE INSPECTOR (ticket.md carries the findings): this ticket's work is VISUAL, "
+                 "one chain per file (T1V):"]
+        for rel in released:
+            r = b["reports"].get(rel) or {}
+            cited = sorted({f.get("frame") for f in r.get("released_findings") or [] if f.get("frame")})
+            copies = []
+            for src in cited:
+                d = dest / boxmod.name_of(rel) / Path(src).name
+                try:
+                    if not d.exists():
+                        d.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copyfile(src, d)
+                    copies.append(os.path.relpath(d, self.p.repo))
+                except OSError:
+                    copies.append(f"{Path(src).name} (no longer on disk)")
+            lines.append(f"  {rel}: box state {r.get('state', 'unknown')}; frames: {', '.join(copies) or 'none'}")
+        lines.append("  `operator lab frames <test file>` pictures a file as the checkout stands (the executor runs it).")
+        return "\n".join(lines)
 
     def _commit_known(self, sha):
         try:
@@ -533,6 +565,7 @@ class Loop:
         facts = gitinfo.facts_block(diff, self.p.repo, self.p.trunk)
         facts += self._lab_facts(t, n, rec)
         facts += self._census_facts(t, plan, report)
+        facts += self._sighting_facts(t, plan, report)
         if died:
             facts += f"\nexecutor: FAILED ({died})"
         write_unit_file(t, n, "facts.md", facts)
@@ -557,6 +590,28 @@ class Loop:
                     "insert a probe that measures the sites, or void the chain\n")
         return (f"\nFAMILY CENSUS (read by the program): {sites} site(s) in {groups} group(s). The first site-fix "
                 f"declares chain_total {groups + 2} (census, {groups} site-fix, guard)\n")
+
+    def _sighting_facts(self, t, plan, report):
+        """A VISUAL chain: the program reads the SIGHTING: line of every investigation while the
+        chain is open (the look, or a probe inserted after it); the latest decides the fix."""
+        chain = t.read("chain.json")
+        if not (chain and chain.get("mode") == "VISUAL" and plan.get("kind") == "investigation"):
+            return ""
+        what, conf = contract.sighting(report)
+        if not what:
+            return "\nVISUAL SIGHTING (read by the program): the report has no SIGHTING: line; a fix will be refused\n"
+        each = contract.sightings(report)
+        chain.update(sighting=what, sighting_confidence=conf, sightings=[[w, c] for w, c, _ in each])
+        t.write("chain.json", chain)
+        lines = "".join(f"\n  {i}. {w}, confidence {c or 'not given'}" for i, (w, c, _) in enumerate(each, 1)) \
+            if len(each) > 1 else ""
+        follows = {"still drawn": "a fix may follow" if conf == "high" else
+                   "a fix needs high confidence: insert a probe that pictures it",
+                   "gone": "the defect is no longer drawn: void the chain (the inspector's next look confirms it)",
+                   "cannot show": "the surface could not be pictured: insert an investigation that makes it reachable, or void"}
+        return (f"\nVISUAL SIGHTING (read by the program): {what}, confidence {conf or 'not given'}: {follows[what]}"
+                + (f"\n  the lines, one per finding:{lines}\n  a fix answers the findings still drawn at high confidence; "
+                   "name the others in plan.md (another look, or a void for those)" if lines else "") + "\n")
 
     def _lab_facts(self, t, n, rec):
         """What the lab recorded for this unit, read by the program (never the report's claim)."""

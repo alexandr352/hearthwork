@@ -71,6 +71,13 @@ LAB block below the atlas. Use its verbs; never start, stop or poll a server you
 - `operator lab gate <file...>`: the named test files, once, under the lab's clock. This is
   how a gate runs whenever the lab has a test command.
 - `operator lab lint [file...]`, `operator lab status`, `operator lab logs`.
+- `operator lab frames <one UI test file>`: runs it as the checkout stands (your uncommitted
+  work included) on the inspector's port, and prints the frames a user sees after each step,
+  saved in the scratch folder, each with its timing. READ EVERY PICTURE it prints with the Read
+  tool before you say what is drawn; a flagged frame (EARLY, SETTLING, TRANSIENT, STALE) never
+  proves that something is missing. A SIGHTING: line names the state of the DEFECT: "still
+  drawn" when the user still meets it (a focus ring that is still absent is still drawn),
+  "gone" when it no longer shows, "cannot show" when the pictures cannot tell.
 - `operator lab up | down | restart | build`: the loop raises the lab for a unit that needs
   it; an investigation never operates it.
 - THE ONE SANCTIONED BASELINE: `operator lab ab <test files>`. It runs the named tests on

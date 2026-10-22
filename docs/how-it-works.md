@@ -30,6 +30,7 @@ makes the one commit. Each chain has a **kind of work**, chosen by an ordered te
 
 | Kind | When |
 |---|---|
+| VISUAL | you released what the inspector saw in a test's pictures: look at it as drawn now, fix it, make the test see it |
 | FAMILY | a fix for this defect already shipped here, and more places carry the same defect: repeat that fix on all of them in one commit |
 | STABILIZATION | something is broken: reproduce it, fix it the smallest safe way, guard it with a test |
 | FEATURE | the product lacks a behaviour: find where it goes, build it, cover it with tests |
@@ -42,6 +43,7 @@ Each kind has a shape, and each step its tool:
 
 | Kind | Steps |
 |---|---|
+| VISUAL | **look** (`operator lab frames` pictures the page as it stands; the look says still drawn, gone or cannot show) → **fix** (product code only) → **guard** (the test gains an assertion that sees the defect, proven by the lab's A/B, then the commit) |
 | FAMILY | **census** (the shipped fix read from its commit; every further site measured and grouped by what it is built from) → one **site-fix** per group (product code only, the fix applied as it shipped) → **guard** (one test over every site, proven by the lab's A/B, then the commit) |
 | STABILIZATION | **reproduce** (a disposable probe measures the defect) → **fix** (product code only; the fence refuses a test here) → **guard** (the real test, proven by the lab's A/B, then the commit) |
 | FEATURE | **locate** → **build** → **cover** (tests, review, commit) |
@@ -50,7 +52,12 @@ Each kind has a shape, and each step its tool:
 | MIGRATION | **survey** → one step at a time → **cutover** |
 | AUDIT | investigations only |
 
-FAMILY is tested first, because a family site is also a defect and STABILIZATION would
+VISUAL is tested first, and only a ticket released from the inspector opens it. The program
+reads the look's SIGHTING line and accepts a fix only on "still drawn" at high confidence;
+"gone" voids the chain. Once the ticket's commit is in the checkout, `operator inspect` looks
+at the released file first and says fixed or still seen: the chain never grades its own work.
+
+FAMILY is tested next, because a family site is also a defect and STABILIZATION would
 otherwise always win. It opens only on a commit the program finds in the repository
 (`pattern_commit`). The program counts the census's sites and groups itself and tells the
 judge; the chain then grows once, to one site-fix per group plus the census and the guard.
@@ -64,7 +71,7 @@ program closes it only when the unit made no commit and left the tree clean.
 A guard test means something only if it fails without the fix and passes with it. The lab
 proves that: `operator lab ab <test>` runs the test on the uncommitted work (CARRIED) and on
 HEAD with the test file kept (BASE), and answers **GUARDS** when it is red on BASE and green on
-CARRIED. A STABILIZATION or FAMILY commit must order it (the program checks the plan), and the program
+CARRIED. A STABILIZATION, FAMILY or VISUAL commit must order it (the program checks the plan), and the program
 records the verdict itself, so the judge reads it like a git fact, never as the report's claim.
 
 By default BASE runs in a throwaway git worktree, so your checkout is never touched. When the

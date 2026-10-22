@@ -264,8 +264,8 @@ def queue(p, head):
 
 # --- capture: the test drives the page, the trace keeps the pictures ----------------
 
-def _cwd_and_config(p):
-    c, wt = conf(p), worktree(p)
+def _cwd_and_config(p, root=None):
+    c, wt = conf(p), Path(root or worktree(p))
     if c["config"]:
         cfg = wt / c["config"]
         cwd = wt / c["cwd"] if c["cwd"] else cfg.parent
@@ -302,20 +302,37 @@ def wrapper_config(cwd, cfg):
     return path
 
 
+def _exclude(repo, path):
+    """Keep a file the inspector writes into your checkout out of git (.git/info/exclude)."""
+    try:
+        exclude = Path(repo) / gitinfo.git(repo, "rev-parse", "--git-path", "info/exclude").strip()
+        line = "/" + str(Path(path).resolve().relative_to(Path(repo).resolve()))
+        have = exclude.read_text(encoding="utf-8").splitlines() if exclude.exists() else []
+        if line not in have:
+            exclude.parent.mkdir(parents=True, exist_ok=True)
+            with open(exclude, "a", encoding="utf-8") as f:
+                f.write(("" if not have or have[-1] == "" else "\n") + f"# hearthwork inspector\n{line}\n")
+    except (RuntimeError, OSError, ValueError):
+        pass
+
+
 def port_env(p):
     c = conf(p)
     return {str(c["port_env"]): str(c["port"])}
 
 
-def capture(p, rel, capdir):
+def capture(p, rel, capdir, root=None):
     """Run one test file. Returns (tests, output, seconds); tests is None when Playwright gave
-    no report."""
-    c, wt = conf(p), worktree(p)
-    cwd, cfg = _cwd_and_config(p)
+    no report. It runs through the wrapper config beside yours, which adds the trace and the end
+    screenshot; in your checkout (root given) the wrapper is git-excluded and removed after."""
+    c, wt = conf(p), Path(root or worktree(p))
+    cwd, cfg = _cwd_and_config(p, wt)
     wrap = wrapper_config(cwd, cfg)
+    if root is not None:
+        _exclude(wt, wrap)
     capdir.mkdir(parents=True, exist_ok=True)
     report = capdir / "report.json"
-    cmd = shlex.split(c["command"]) + [os.path.relpath(wt / rel, cwd), f"--config={wrap.name}",
+    cmd = shlex.split(c["command"]) + [os.path.relpath(wt / rel, cwd), f"--config={os.path.relpath(wrap, cwd)}",
                                        "--trace=on", "--workers=1", f"--output={capdir / 'results'}",
                                        "--reporter=json"]
     env = dict(os.environ, PLAYWRIGHT_JSON_OUTPUT_NAME=str(report), FORCE_COLOR="0", **port_env(p))
@@ -327,6 +344,9 @@ def capture(p, rel, capdir):
         return None, f"Playwright ran past {c['timeout']}s", round(time.time() - t0, 1)
     except FileNotFoundError as e:
         return None, f"cannot run {c['command']}: {e}", round(time.time() - t0, 1)
+    finally:
+        if root is not None:
+            wrap.unlink(missing_ok=True)
     try:
         rep = json.loads(report.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -774,6 +794,53 @@ def _look(p, cfg, rec, rel, head, capdir, records, t0, log):
     rec.update(outcome="judged" if not errors else "judged-partly", verdict=v, findings=n_found,
                carried=len(carried), state=state, prev_state=prev)
     return rec
+
+
+def frames_here(p, rel, echo=print):
+    """`operator lab frames <test file>`: run one UI test file in YOUR CHECKOUT, uncommitted work
+    and all, on the inspector's port, and cut the frames a user sees after each step into the
+    scratch folder. No judge, nothing spent: the unit reads the pictures itself. Returns the exit code."""
+    gaps = check_conf(p)
+    if gaps:
+        raise InspectError("the inspector is not set up, so its port is unknown:\n  " + "\n  ".join(gaps), 2)
+    repo = Path(p.repo)
+    full = (repo / rel).resolve()
+    try:
+        rel = str(full.relative_to(repo.resolve()))
+    except ValueError:
+        raise InspectError(f"{rel} is not in the checkout", 2)
+    if not full.exists():
+        raise InspectError(f"{rel} does not exist", 2)
+    out = lab.scratch_path(p) / "frames" / box.name_of(rel)
+    shutil.rmtree(out, ignore_errors=True)
+    with Locked(p):
+        tests, said, secs = capture(p, rel, out, root=repo)
+    if not tests:
+        echo(f"operator lab frames: Playwright gave no report ({secs}s). Its last lines:")
+        echo("\n".join(said.strip().splitlines()[-25:]))
+        return 1
+    echo(f"FRAMES of {rel} at the checkout as it stands (uncommitted work included), {secs}s.")
+    echo("Read each picture with the Read tool. A flagged frame (EARLY, SETTLING, TRANSIENT, STALE) never proves")
+    echo("that something is missing.")
+    for i, t in enumerate(tests, 1):
+        echo(f"TEST: {t['title']}   [status {t['status']}]" + (f" error: {t['error'][:200]}" if t.get("error") else ""))
+        fr = []
+        if t.get("trace") and os.path.exists(t["trace"]):
+            try:
+                fr = key_frames(t["trace"], out, f"t{i:02d}")
+            except (zipfile.BadZipFile, KeyError, OSError) as e:
+                echo(f"  its trace could not be read: {e}")
+        if t.get("end_shot") and os.path.exists(t["end_shot"]):
+            fn = f"t{i:02d}-end.png"
+            shutil.copyfile(t["end_shot"], out / fn)
+            fr.append({"frame": fn, "after": ["END OF TEST — the settled page"],
+                       "timing": "taken at the end of the test, full resolution, never flagged"})
+        for f in fr:
+            echo(f"  FRAME {os.path.relpath(out / f['frame'], repo)}  after: {' | '.join(f['after'])}  [{f['timing']}]")
+        if not fr:
+            echo("  no frames")
+    shutil.rmtree(out / "results", ignore_errors=True)
+    return 0
 
 
 def describe(rec):

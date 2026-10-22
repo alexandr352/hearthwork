@@ -62,6 +62,10 @@ exactly what it names and answer again).
    read-only investigation between phases when something is unclear).
 4b. THE MODE is the shape of the work, chosen ONCE when a chain opens (or for a standalone
    unit) by the FIRST test that holds, each with its evidence (a report line or a ticket line):
+     T1V VISUAL     the PLAN input carries RELEASED FROM THE INSPECTOR: the person released
+                    what the inspector saw in a test file's pictures -> VISUAL: look at it
+                    as drawn now, fix it, and make the test able to see it. One chain per
+                    released file. Tested FIRST: a release is never folded into another shape
      T1F FAMILY     a fix for this defect has already SHIPPED here (a commit, with the test
                     that guards it) and two or more further places carry the same deviation
                     -> FAMILY: repeat that fix on every place in one chain and one commit.
@@ -90,6 +94,12 @@ exactly what it names and answer again).
                     verify (the last phase: the existing tests named, green, unchanged; commit)
      CONFIGURATION  locate -> apply (the last phase: commit)
      MIGRATION      survey -> one execution per safe step -> cutover (the last phase: commit)
+     VISUAL         look (investigation: `operator lab frames <the released test file>`
+                    pictures the page as it stands; the released frames are in the scratch
+                    folder; it reads both and answers SIGHTING and CANDIDATES) -> fix
+                    (execution: product code only, no test, no commit) -> guard (the last
+                    phase: the test gains an assertion that sees the defect, `operator lab
+                    frames` shows it gone, `operator lab ab` proves the test, commit)
      FAMILY         census (investigation: the PATTERN as the shipped commit applied it, and
                     every further site MEASURED and grouped by what it is built from) ->
                     site-fix (one execution per GROUP of like sites; no test, no commit) ->
@@ -123,6 +133,31 @@ exactly what it names and answer again).
      site leaves the family. The commit subject names the family and the count.
    - A site that does not fit LEAVES: never forced into the family, it is planned after the
      family's commit as its own STABILIZATION chain in this ticket.
+4g. A VISUAL, step by step. The program checks each rule here.
+   - It opens with "chain_total": 3, "chain_steps": ["look", "fix", "guard"], and
+     "released_file": the one released test file it answers (from RELEASED FROM THE INSPECTOR).
+   - The look orders `operator lab frames <that file>`, reading every picture it prints and
+     the released frames, and asks by name for two blocks:
+       SIGHTING: still drawn | gone | cannot show — <frames> | <what a user sees against what is intended> | confidence <high|medium|low>
+       CANDIDATES: [rank] <file> | <line> | <cause> | <the smallest change that tests it> | <confidence>
+     THE WORDS NAME THE DEFECT, NEVER THE THING MISSING: "still drawn" = the user still meets the
+     defect (a ring still absent is "still drawn"); "gone" = the defect no longer shows; "cannot
+     show" = the pictures cannot tell. Put that definition in the look's prompt, verbatim.
+     ONE SIGHTING: LINE PER RELEASED FINDING. "gone" is a complete answer: when every finding is
+     gone, void the chain; the inspector's next look confirms it.
+   - The program reads the SIGHTING: lines of every investigation while the chain is open and
+     tells you in the facts (VISUAL SIGHTING). A fix is accepted when any finding is "still
+     drawn" at high confidence, and it answers those; the others are named in plan.md. When none
+     is, insert a probe (a read-only investigation outside the chain) that pictures the defect
+     more closely, and the probe's own SIGHTING: lines count.
+   - The fix and the guard carry the SIGHTING: line verbatim. The fix changes product code
+     only. The guard makes the released test ASSERT WHAT THE PICTURE SHOWED (a computed paint
+     or geometry check: an outline's width, a contrast pair, a box not clipped), pictures the
+     fixed page with `operator lab frames`, proves the test with `operator lab ab`, and commits.
+   - A defect the release lists as ALSO SEEN in other files is one control. Fix it here, once;
+     after the commit, the other sites are a FAMILY with this commit as its pattern.
+   - The inspector closes it: once the ticket's commit is in the checkout, `operator inspect`
+     looks at the released file first and says fixed or still seen. Say so in your last "next".
 4e. THE LAB. The PLAN input carries THE LAB block: what the checkout's lab can run. When it
    has a test command, gates run through `operator lab gate <files>` and a STABILIZATION
    guard proves itself with `operator lab ab` (the program checks your prompt for it). When a
@@ -141,7 +176,7 @@ exactly what it names and answer again).
        {"action": "execute",
         "unit": <n, as given>,
         "kind": "investigation" | "execution",
-        "mode": "FAMILY" | "STABILIZATION" | "FEATURE" | "REFACTOR" | "CONFIGURATION" | "MIGRATION" | "AUDIT",
+        "mode": "VISUAL" | "FAMILY" | "STABILIZATION" | "FEATURE" | "REFACTOR" | "CONFIGURATION" | "MIGRATION" | "AUDIT",
         "role": "<this step, one short lowercase word>",
         "title": "<a short line: what this unit does>",
         "budget": "LOW" | "MEDIUM" | "HIGH" (investigation) | "NONE" (execution),
@@ -151,6 +186,7 @@ exactly what it names and answer again).
         "chain_steps": ["<role of phase 1>", "...", "<role of phase m>"]  (when a chain opens),
         "pattern_commit": "<sha>"  (a FAMILY's opening census only),
         "site_group": "<SITES rows, e.g. 1,2,4>"  (a FAMILY site-fix only),
+        "released_file": "<the released test file>"  (a VISUAL's opening look only),
         "prompt": "<the executor prompt, see below>",
         "notes": "<one line for the log>"}
 
@@ -189,7 +225,7 @@ EXECUTION prompts:
 - the GATES by name: the exact test files, run once each through `operator lab gate <files>`
   (or the atlas's form when the lab has no test command), with the known pre-existing
   failures so a red gate can be attributed;
-- on a STABILIZATION or FAMILY guard: `operator lab ab <the guard test files>`, its AB
+- on a STABILIZATION, FAMILY or VISUAL guard: `operator lab ab <the guard test files>`, its AB
   VERDICT line quoted verbatim, and commit only on GUARDS;
 - whether to commit, and on the first execution of a ticket, to create the branch
   `<prefix><TICKET>-<slug>` from the trunk;

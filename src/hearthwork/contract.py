@@ -10,8 +10,83 @@ BUDGETS = {"LOW": (2, 150), "MEDIUM": (5, 300), "HIGH": (10, 600)}
 FINDINGS_MARK = "| Finding:"
 SCOPE_MARK = "SCOPE CONSTRAINT:"
 PROMPT_MAX = 24000
-MODES = ("FAMILY", "STABILIZATION", "FEATURE", "REFACTOR", "CONFIGURATION", "MIGRATION", "AUDIT")
+MODES = ("VISUAL", "FAMILY", "STABILIZATION", "FEATURE", "REFACTOR", "CONFIGURATION", "MIGRATION", "AUDIT")
 FAMILY_ROLES = ("census", "probe", "site-fix", "blast-radius", "guard")
+VISUAL_ROLES = ("look", "fix", "guard")
+SIGHTING = re.compile(r"(?im)^\s*SIGHTING:\s*(still drawn|gone|cannot show)\b([^\n]*)")
+
+
+def sightings(report):
+    """Every SIGHTING: line of a report, one per released finding: [(what, confidence, the line)]."""
+    out = []
+    for what, rest in SIGHTING.findall(report or ""):
+        m = re.search(r"confidence\s*:?\s*(high|medium|low)", rest, re.I)
+        out.append((what.lower(), m.group(1).lower() if m else None, f"SIGHTING: {what}{rest}".strip()))
+    return out
+
+
+def sighting(report):
+    """What the chain may do, from all the report's SIGHTING: lines: still drawn at high confidence
+    when any finding is (a fix may follow, for those); gone when every finding is; else the
+    weakest word seen. (None, None) when there is no line."""
+    s = sightings(report)
+    if not s:
+        return None, None
+    if any(w == "still drawn" and c == "high" for w, c, _ in s):
+        return "still drawn", "high"
+    if all(w == "gone" for w, _, _ in s):
+        return "gone", s[-1][1]
+    w, c, _ = next((x for x in s if x[0] == "still drawn"), None) or next(x for x in s if x[0] != "gone")
+    return w, c
+
+
+def _check_visual(plan, chain_state, released, dev):
+    """The VISUAL shape: one released test file, looked at first, fixed only on a sighting of
+    the defect still drawn at high confidence, and guarded by a test that can see it."""
+    kind, role, prompt = plan.get("kind"), plan.get("role"), plan.get("prompt") or ""
+    phase, total = plan.get("chain_phase"), plan.get("chain_total")
+    if not released:
+        dev.append("VISUAL opens only on a ticket released from the inspector (operator release); "
+                   "this ticket carries no release")
+        return
+    if not plan.get("chain"):
+        dev.append("a VISUAL is a chain: look, fix, guard")
+        return
+    if role not in VISUAL_ROLES:
+        dev.append(f'a VISUAL phase\'s "role" is one of {", ".join(VISUAL_ROLES)}; a probe or a blast radius is an '
+                   "insert (a read-only investigation outside the chain)")
+    opening = not chain_state or chain_state.get("chain") != plan.get("chain")
+    if opening:
+        if phase != 1 or role != "look" or kind != "investigation":
+            dev.append("a VISUAL opens with its look: phase 1, role look, an investigation")
+        if total != 3:
+            dev.append('a VISUAL is three phases: "chain_total": 3 (look, fix, guard)')
+        if plan.get("released_file") not in released:
+            dev.append(f'a VISUAL names the one released test file it answers: "released_file" is one of '
+                       f'{", ".join(released)}')
+        if "still drawn" not in prompt or "defect" not in prompt.lower():
+            dev.append('the look prompt defines the SIGHTING words as the state of the DEFECT ("still drawn" = '
+                       'the user still meets it; "gone" = it no longer shows), never of the thing missing')
+        for block in ("SIGHTING:", "CANDIDATES:", "operator lab frames"):
+            if block not in prompt:
+                dev.append(f"the look prompt carries {block}" + (" (the pictures it takes this unit)"
+                                                                if block == "operator lab frames" else " by name"))
+        return
+    if isinstance(total, int) and total != chain_state.get("total"):
+        dev.append(f"a VISUAL keeps its three phases; it is {chain_state.get('total')}")
+    if role == "fix":
+        what, conf = chain_state.get("sighting"), chain_state.get("sighting_confidence")
+        if what != "still drawn" or conf != "high":
+            dev.append(f"a VISUAL fix needs the defect seen STILL DRAWN at high confidence; the program read "
+                       f"{what or 'no sighting'}{f' at {conf} confidence' if conf else ''}"
+                       + (": void the chain" if what == "gone" else
+                          ": insert a probe that pictures it, or void the chain" if what else
+                          ": the look's report has no SIGHTING: line"))
+    if role in ("fix", "guard") and "SIGHTING:" not in prompt:
+        dev.append(f"the {role} prompt carries the look's SIGHTING: line verbatim")
+    if role == "guard" and "operator lab frames" not in prompt:
+        dev.append("the VISUAL guard pictures the fixed page (operator lab frames <the test file>) and makes the "
+                   "test assert what the picture shows, so it would have caught the defect")
 SHA = re.compile(r"^[0-9a-f]{7,40}$")
 GROUP = re.compile(r"^\d+(\s*,\s*\d+)*$")
 
@@ -85,7 +160,7 @@ def _check_family(plan, chain_state, sha_known, dev):
         dev.append("the FAMILY guard prompt carries the SITES: block: one test over every site")
 
 
-def check_plan(plan, unit, open_chain=None, lab_ready=False, chain_state=None, sha_known=None):
+def check_plan(plan, unit, open_chain=None, lab_ready=False, chain_state=None, sha_known=None, released=()):
     """A list of deviations; empty when the plan keeps its contract. chain_state is the open
     chain's record (chain.json); sha_known tells whether a commit is in the repository."""
     if not isinstance(plan, dict):
@@ -165,9 +240,15 @@ def check_plan(plan, unit, open_chain=None, lab_ready=False, chain_state=None, s
         if mode not in (None, "FAMILY"):
             dev.append(f'chain "{chain}" is a FAMILY: its steps carry "mode": "FAMILY"')
         _check_family(plan, chain_state, sha_known, dev)
-    if lab_ready and (mode in ("STABILIZATION", "FAMILY") or in_family) and kind == "execution" and commit is True \
-            and "operator lab ab" not in prompt:
-        dev.append(f"a {'FAMILY' if in_family else 'STABILIZATION'} commit proves its guard first: the prompt orders "
+    in_visual = mode == "VISUAL" or (cs.get("mode") == "VISUAL" and bool(chain) and chain == cs.get("chain"))
+    if in_visual:
+        if mode not in (None, "VISUAL"):
+            dev.append(f'chain "{chain}" is a VISUAL: its phases carry "mode": "VISUAL"')
+        _check_visual(plan, chain_state, list(released or ()), dev)
+    shape = "FAMILY" if in_family else "VISUAL" if in_visual else "STABILIZATION"
+    if lab_ready and (mode in ("STABILIZATION", "FAMILY", "VISUAL") or in_family or in_visual) and kind == "execution" \
+            and commit is True and "operator lab ab" not in prompt:
+        dev.append(f"a {shape} commit proves its guard first: the prompt orders "
                    "`operator lab ab <the guard test files>` and asks for its AB VERDICT line verbatim; "
                    "it commits only on GUARDS")
     if open_chain and chain and chain != open_chain:

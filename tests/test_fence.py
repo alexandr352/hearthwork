@@ -260,6 +260,9 @@ class StepFence(unittest.TestCase):
         self.check(ex, "Bash", {"command": "python3 -m hearthwork run"}, "deny")
         self.check(ex, "Bash", {"command": "operator lab _ab-body -- x"}, "deny")
         self.check(ex, "Bash", {"command": "operator lab -p shop gate tests/test_tax.py"}, "allow")
+        self.check(ex, "Bash", {"command": "operator lab frames e2e/pay.spec.js"}, "allow")
+        self.check(dict(ex, kind="investigation"), "Bash", {"command": "operator lab frames e2e/pay.spec.js"}, "allow")
+        self.check(ex, "Bash", {"command": "operator inspect --file e2e/pay.spec.js"}, "deny")
 
 
 class InspectorFence(unittest.TestCase):
