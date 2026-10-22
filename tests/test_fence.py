@@ -260,3 +260,16 @@ class StepFence(unittest.TestCase):
         self.check(ex, "Bash", {"command": "python3 -m hearthwork run"}, "deny")
         self.check(ex, "Bash", {"command": "operator lab _ab-body -- x"}, "deny")
         self.check(ex, "Bash", {"command": "operator lab -p shop gate tests/test_tax.py"}, "allow")
+
+
+class InspectorFence(unittest.TestCase):
+    def test_reads_its_frames_only(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = os.path.realpath(d)
+            cap = os.path.join(d, "captures", "u0001")
+            pol = {"mode": "inspector", "read_root": cap}
+            self.assertEqual(ask(pol, "Read", {"file_path": f"{cap}/frames/t01-001.jpeg"}, cap), "allow")
+            self.assertEqual(ask(pol, "Read", {"file_path": f"{d}/box.json"}, cap), "deny")
+            self.assertEqual(ask(pol, "Read", {"file_path": f"{cap}/../../box.json"}, cap), "deny")
+            self.assertEqual(ask(pol, "Bash", {"command": "ls"}, cap), "deny")
+            self.assertEqual(ask(pol, "Write", {"file_path": f"{cap}/x"}, cap), "deny")

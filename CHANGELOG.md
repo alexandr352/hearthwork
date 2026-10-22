@@ -4,6 +4,22 @@ To update: `~/.hearthwork-venv/bin/pip install --upgrade git+https://github.com/
 then `operator upgrade`, then restart `operator ui`. Versions marked **upgrade** change the doctrine
 the operator or the spirit reads, so `operator upgrade` matters for them.
 
+## 0.5.0 (upgrade)
+- **The inspector**: `operator inspect` runs your Playwright UI tests in a git worktree of its own, on a
+  port of its own, cuts the frames a user would see after each step from the trace (each with its timing;
+  a frame too soon after its step never proves an absence), and has one judge call per test file read
+  them against your rubric. The judge holds Read on those frames and nothing else; its answer is checked,
+  and a broken one goes back to the same session, three times at most. See docs/inspector.md.
+- **The rubric** is the project's `inspect/rubric.md`, written on first use: WCAG 2.2, levels A and AA.
+  A `fails` or `measure` finding must cite one of its listed criteria; anything else is `other`.
+- **The box**: one report per test file, replaced by each new look. One control's defect seen in several
+  files counts once. `operator box` shows what waits; `operator release <N | file> --ticket <ID>` writes
+  the chosen findings into a new ticket; the next look at a newer commit says fixed or still seen.
+- The work log page shows the box, with the frame each finding was seen in (served by `operator ui` too).
+- `operator inspect config` sets it up (`tests`, `port_env`, `port`; optional `command`, `cwd`, `config`,
+  `up`, `build`, `relook_hours`); `[models] inspector` picks the judge's model (default opus).
+- The spirit knows the inspector's commands, and that releasing is the person's decision.
+
 ## 0.4.0 (upgrade)
 - **FAMILY**, a seventh kind of work: a fix for a defect has already shipped, and more places carry the same
   defect. Tested before STABILIZATION (a family site is a defect too, and STABILIZATION would always win).

@@ -684,6 +684,115 @@ def cmd_lab(args):
         return e.code
 
 
+# --- the inspector ------------------------------------------------------------------
+
+def cmd_inspect(args):
+    from . import inspector, worklog
+    p = project_of(args)
+    rest = list(args.rest or [])
+    try:
+        if rest[:1] == ["config"]:
+            if len(rest) == 3:
+                inspector.set_keys(p, {rest[1]: rest[2]})
+                out(f"  {rest[1]} = {rest[2]}")
+                return 0
+            if len(rest) != 1:
+                return fail("operator inspect config [<key> <value>]")
+            c = inspector.conf(p)
+            for k in inspector.KEYS:
+                out(f"  {k} = {c[k]!r}")
+            for g in inspector.check_conf(p):
+                out(f"  missing: {g}")
+            out(f"  rubric: {inspector.rubric_path(p)}")
+            return 0
+        if rest:
+            return fail(f"unknown inspect verb {rest[0]!r}: operator inspect [--file F] [--units N], or operator inspect config")
+        if args.detach:
+            logs = home.home_dir() / "runs"
+            logs.mkdir(parents=True, exist_ok=True)
+            log = logs / f"{now_iso().replace(':', '')}-{p.name}-inspect.log"
+            cmd = [sys.executable, "-m", "hearthwork", "inspect", "-p", p.name, "--units", str(args.units), "--at", args.at]
+            if args.file:
+                cmd += ["--file", args.file]
+            if args.max_cost:
+                cmd += ["--max-cost", str(args.max_cost)]
+            with open(log, "ab") as f:
+                proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=f, stderr=subprocess.STDOUT,
+                                        start_new_session=True, env=dict(os.environ, HEARTHWORK_HOME=str(home.home_dir())))
+            out(f"the inspector started in the background (pid {proc.pid}); its output: {log}")
+            return 0
+        cfg = home.load_config()
+        spent, done = 0.0, 0
+        while True:
+            rec = inspector.run_unit(p, cfg, only=args.file, ref=args.at, dry=args.dry_run,
+                                     log=lambda m: out(f"[{now_iso()}] {m}"))
+            out(inspector.describe(rec))
+            if rec["outcome"] in ("dry-run", "nothing-due"):
+                break
+            done += 1
+            spent += rec.get("cost_usd") or 0
+            try:
+                worklog.build()
+            except Exception as e:  # the page is a view; a unit never fails for it
+                out(f"  (the work log page was not rebuilt: {e})")
+            if args.file or (args.units and done >= args.units):
+                break
+            if args.max_cost and spent >= args.max_cost:
+                out(f"stopping: ${spent:.2f} spent, the limit is ${args.max_cost:.2f}")
+                break
+        if done:
+            out(f"spent ${spent:.2f} over {done} inspector unit(s)")
+            from . import box
+            out(box.numbers(p, inspector.load_roster(p), len(inspector.test_files(p))))
+        return 0
+    except inspector.InspectError as e:
+        print(f"operator inspect: {e}", file=sys.stderr)
+        return e.code
+
+
+def cmd_box(args):
+    from . import box, inspector
+    p = project_of(args)
+    if args.json:
+        out(json.dumps(box.load(p), indent=1))
+        return 0
+    try:
+        n = len(inspector.test_files(p)) if inspector.conf(p)["tests"] else None
+    except Exception:
+        n = None
+    out(box.render(p, inspector.load_roster(p), n))
+    return 0
+
+
+def cmd_release(args):
+    from . import box, gitinfo
+    p = project_of(args)
+    if not home.TICKET_ID.match(args.ticket):
+        return fail("a ticket id is letters, digits, '.', '_' or '-' (e.g. UI-1)")
+    t = Ticket(p, args.ticket)
+    if t.exists():
+        return fail(f"ticket {args.ticket} already exists: release into a new ticket")
+    try:
+        head = gitinfo.git(p.repo, "rev-parse", "HEAD").strip()
+        text, files = box.release(p, args.files, head, args.ticket)
+    except box.BoxError as e:
+        return fail(str(e))
+    names = ", ".join(box.name_of(f) for f in files)
+    title = f"Fix what the inspector saw: {names}"[:120]
+    t.dir.mkdir(parents=True, exist_ok=True)
+    home.write_atomic(t.path("ticket.md"), f"# {args.ticket} — {title}\n\n{text.strip()}\n")
+    t.write("meta.json", {"id": args.ticket, "title": title, "created": now_iso(), "released_files": files})
+    st = p.read_state()
+    if not st.get("active_ticket"):
+        st["active_ticket"] = args.ticket
+        p.write_state(st)
+    out(f"released {len(files)} file(s) into ticket {args.ticket}: {names}")
+    out(f"  the ticket: {t.path('ticket.md')}")
+    if st.get("active_ticket") != args.ticket:
+        out(f"  (active stays {st['active_ticket']}; operator ticket use {args.ticket} to work on it)")
+    return 0
+
+
 # --- parser ----------------------------------------------------------------------
 
 def parser():
@@ -782,6 +891,22 @@ def parser():
                     metavar="verb")
     sp.add_argument("rest", nargs=argparse.REMAINDER)
     sp.set_defaults(fn=cmd_lab)
+    sp = with_project(sub.add_parser("inspect", help="look at what your UI tests draw, one test file per unit (operator inspect config sets it up)"))
+    sp.add_argument("rest", nargs="*", help="config [<key> <value>]")
+    sp.add_argument("--file", help="look at this test file now")
+    sp.add_argument("--units", "-n", type=int, default=1, help="stop after this many files (default 1; 0 = until none is due)")
+    sp.add_argument("--at", default="HEAD", help="the commit of your checkout to look at (default HEAD)")
+    sp.add_argument("--max-cost", type=float, help="stop once this many dollars are spent")
+    sp.add_argument("--dry-run", action="store_true", help="say which files are due, run nothing")
+    sp.add_argument("--detach", action="store_true", help="run in the background and return at once")
+    sp.set_defaults(fn=cmd_inspect)
+    sp = with_project(sub.add_parser("box", help="what the inspector found, waiting for you"))
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(fn=cmd_box)
+    sp = with_project(sub.add_parser("release", help="release the top N waiting files, or named ones, from the box into a new ticket"))
+    sp.add_argument("files", nargs="+", help="a count (the top N with something to fix) or file names")
+    sp.add_argument("--ticket", "-t", required=True, help="the new ticket's id")
+    sp.set_defaults(fn=cmd_release)
     sub.add_parser("doctor", help="check the setup").set_defaults(fn=cmd_doctor)
     sub.add_parser("upgrade", help="refresh every project's operator doctrine from this version").set_defaults(fn=cmd_upgrade)
     return ap

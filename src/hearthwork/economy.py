@@ -25,7 +25,7 @@ from pathlib import Path
 from . import home
 
 DEFAULTS = {"mcp": False, "claude_md": False, "cache": "policy"}
-TTL = {"operator": "1h", "spirit": "1h", "executor": "5m", "survey": "5m", "atlas": "5m"}
+TTL = {"operator": "1h", "spirit": "1h", "executor": "5m", "survey": "5m", "atlas": "5m", "inspector": "5m"}
 CACHES = ("policy", "auto")
 
 

@@ -42,6 +42,7 @@ survey = "sonnet"              # reads the tree when an executor died without a 
 spirit = "sonnet"              # the one you talk to (operator chat, operator ui)
 atlas = "sonnet"               # drafts a new project's atlas (operator atlas)
 reader = "sonnet"              # the executor's sub-agents: the reader, the prober, the reviewer
+inspector = "opus"             # judges what your UI tests draw (operator inspect)
 
 [timeouts]                     # seconds
 plan = 1800
@@ -141,6 +142,7 @@ class Project:
     repo_settings: bool = True
     mcp_allow: list = field(default_factory=list)
     lab: dict = field(default_factory=dict)
+    inspect: dict = field(default_factory=dict)
 
     @property
     def tickets(self):
@@ -190,6 +192,7 @@ def load_project(pdir):
         repo_settings=bool(data.get("repo_settings", True)),
         mcp_allow=list(data.get("mcp_allow") or []),
         lab=dict(data.get("lab") or {}),
+        inspect=dict(data.get("inspect") or {}),
     )
 
 

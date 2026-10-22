@@ -41,6 +41,17 @@ Units use it too; the fence holds them to it.
 | `operator lab restore` | Put back the work an A/B that died left saved under a git ref, and prove it. Any acting lab verb does this first anyway. |
 | `operator lab up \| down \| restart \| build [--force] \| logs [n]` | The server and the build, when the project has them. `up` needs only the start command: it finds the address from what the server prints or the port it opens, waits until it answers, and saves it as `health`. A unit that needs the server says so in its plan, and the loop raises it before the unit and takes it down after. |
 
+## The inspector
+
+| Command | What it does |
+|---|---|
+| `operator inspect config [<key> <value>]` | Show or set the `[inspect]` table: `tests` (a glob of UI test files), `port_env` and `port` (a port of its own, read by your app and your Playwright config from that variable), and optionally `command`, `cwd`, `config`, `up`, `build`, `relook_hours`. Prints the rubric's path. |
+| `operator inspect [--file <f>] [-n <files>] [--at <ref>] [--max-cost <$>] [--dry-run] [--detach]` | Look at what your UI tests draw: one test file per unit, the next one due (never looked at, released, changed, or old with the code moved). `-n 0` until none is due. `--dry-run` lists what is due. |
+| `operator box [--json]` | What the inspector found, waiting for you, failures first. |
+| `operator release <N \| file...> --ticket <ID>` | Release the top N waiting files with something to fix, or named ones, into a new ticket. The next look at a newer commit says whether each is fixed or still seen. |
+
+See [inspector.md](inspector.md).
+
 ## Tickets
 
 | Command | What it does |

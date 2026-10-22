@@ -372,6 +372,17 @@ def check_operator(tool, ti, cwd):
     deny(tool, f"{tool} is not available to the operator")
 
 
+def check_inspector(tool, ti, cwd):
+    """The inspector's judge reads the frames of its own capture and nothing else."""
+    root = [os.path.realpath(POLICY["read_root"])]
+    if tool == "Read":
+        p = file_tool_path(ti)
+        if p and under(norm(p, cwd), root):
+            allow(tool, "a frame of this capture")
+        deny(tool, "the inspector reads only the frames it was given")
+    deny(tool, f"{tool} is not available to the inspector")
+
+
 def unquoted_newline(cmd):
     """True when a newline stands outside quotes, where the shell reads it as a new command."""
     quote, escape = None, False
@@ -469,6 +480,8 @@ def main():
         check_operator(tool, ti, cwd)
     elif mode == "spirit":
         check_spirit(tool, ti, cwd)
+    elif mode == "inspector":
+        check_inspector(tool, ti, cwd)
     deny(tool, f"unknown fence mode {mode!r}")
 
 

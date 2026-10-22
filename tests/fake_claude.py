@@ -35,6 +35,19 @@ def flag(name):
         return True
     return False
 
+if prompt.startswith("You are THE INSPECTOR") or (resume and prompt.startswith("DEVIATION: your answer")):
+    first = (state / "judge-first-prompt.txt")
+    if prompt.startswith("You are THE INSPECTOR"):
+        first.write_text(prompt)
+    if flag("judge-bad-once"):
+        envelope('{"verdict": "findings", "findings": []}')
+    src = first.read_text()
+    frame = re.search(r"FRAME (\S+)", src).group(1).rsplit("/", 1)[-1]
+    test = re.search(r"TEST: (.+?)   \[", src).group(1)
+    envelope(json.dumps({"verdict": "findings", "summary": "the pay button has no focus ring",
+                         "findings": [{"test": test, "frame": frame, "finding": "No focus ring on the Pay button.",
+                                       "element": "Checkout page · Pay button", "judgement": "fails",
+                                       "criterion": "2.4.7 Focus Visible", "severity": "high", "confidence": "high"}]}))
 if prompt.startswith("PHASE: PLAN") or prompt.startswith("DEVIATION") and "PLAN" in prompt:
     if flag("slow-plan"):
         import time

@@ -438,6 +438,45 @@ def lab_chip(projects):
     return " · <span class=labs>lab: " + " ".join(parts) + "</span>"
 
 
+def inspector_section(p, h):
+    """What the inspector found for one project, waiting for the person: the numbers, then
+    each waiting file with its findings and the frame each was seen in."""
+    from pathlib import Path
+    from . import box, inspector
+    b = box.load(p)
+    if not b["reports"]:
+        return ""
+    roster = inspector.load_roster(p)
+    try:
+        n = len(inspector.test_files(p)) if inspector.conf(p)["tests"] else None
+    except Exception:
+        n = None
+    nums = box.numbers(p, roster, n).splitlines()
+    waiting = sorted((r for r in b["reports"].values() if r["state"] in box.RELEASABLE), key=box.report_rank)
+    rows = []
+    for r in waiting[:20]:
+        items = []
+        for f in box.own(r):
+            img = ""
+            fr = Path(f.get("frame") or "")
+            try:
+                rel = fr.resolve().relative_to(Path(h).resolve())
+                img = f'<a href="{esc(rel.as_posix())}"><img class=shot loading=lazy src="{esc(rel.as_posix())}" alt="the frame it was seen in"></a>'
+            except (ValueError, OSError):
+                pass
+            also = (f' <span class=also>also seen in {esc(", ".join(box.name_of(x["file"]) for x in f["also_in"]))}</span>'
+                    if f.get("also_in") else "")
+            items.append(f"""<li><span class="judge {esc(f.get('judgement'))}">{esc(f.get('judgement'))}</span>
+  <b>{esc(f.get('element'))}</b> · {esc(f.get('criterion'))} · {esc(f.get('severity'))}{also}
+  <div>{esc(f.get('finding'))}</div><div class=hint>{esc(f.get('test'))}</div>{img}</li>""")
+        state = " (released, still seen)" if r["state"] == "still-seen" else ""
+        rows.append(f"""<details class=boxfile><summary><b>{esc(r['name'])}</b>{esc(state)} — {esc(box.judgement_line(r))}
+  <span class=hint>looked at {esc((r.get('audited_commit') or '')[:10])}</span></summary><ul>{''.join(items)}</ul></details>""")
+    more = f"<p class=hint>… and {len(waiting) - 20} more: operator box</p>" if len(waiting) > 20 else ""
+    return f"""<div class=inspector><h3>Inspector</h3><p>{esc(nums[0])}<br>{esc(nums[1])}</p>
+{''.join(rows)}{more}{'<p class=hint>Release what should be fixed: <code>operator release &lt;N | file&gt; --ticket &lt;ID&gt;</code></p>' if waiting else ''}</div>"""
+
+
 def render(home_path=None, ui=False):
     h = home_path or home.home_dir()
     projects = home.projects(h)
@@ -479,8 +518,12 @@ def render(home_path=None, ui=False):
                           + (f'<details><summary>{len(tail)} more</summary>{"".join(tail)}</details>' if tail else "")
                           + "</div>")
         link = ""
+        try:
+            insp = inspector_section(p, h)
+        except Exception:
+            insp = ""
         sections.append(f"""<h2>{esc(p.name)} <span class=repo>{esc(p.repo)}</span>{link}</h2>
-{''.join(full) or '<p class=empty>No units yet. <code>operator run</code> starts one.</p>'}{older_html}""")
+{insp}{''.join(full) or '<p class=empty>No units yet. <code>operator run</code> starts one.</p>'}{older_html}""")
     try:
         from . import guide
         nxt = guide.next_step(h=h)
@@ -628,6 +671,12 @@ h3{margin:0;font-size:16px}
 .tabs a:hover{color:var(--ink)}
 .tabs a[aria-current=page]{color:var(--ink);font-weight:600;border-bottom-color:var(--accent)}
 .tabs .crumb{color:var(--mute);font-size:14px;padding:6px 4px 8px}
+.inspector{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:12px 0}
+.inspector h3{margin:0 0 6px;font-size:15px}.inspector p{margin:4px 0;font-size:13px}
+.boxfile{margin:6px 0}.boxfile summary{cursor:pointer;font-size:13px}.boxfile ul{margin:6px 0 10px;padding-left:18px}
+.boxfile li{margin:8px 0;font-size:13px}.shot{display:block;max-width:min(100%,480px);margin-top:6px;border:1px solid var(--line);border-radius:6px}
+.judge{font-size:11px;padding:1px 6px;border-radius:8px;border:1px solid var(--line);color:var(--mute)}
+.judge.fails{color:var(--red);border-color:var(--red)}.also{color:var(--mute);font-size:12px}
 .older{margin:18px 0}.older h4{font-size:13px;color:var(--mute);margin:0 0 6px;font-weight:600}
 a.row{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);text-decoration:none;margin:6px 0}
 a.row:hover{border-color:var(--accent)}a.row[hidden]{display:none}

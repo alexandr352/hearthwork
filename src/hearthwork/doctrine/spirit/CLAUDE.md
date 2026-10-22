@@ -89,6 +89,14 @@ with the Read tool, not `cat`; the paths below are relative to this directory. R
   command that starts it (`operator lab config up "<command>"`). `operator lab up` finds the
   address itself, from what the server prints or the port it opens, and saves it; never ask the
   person for a port or a URL unless `up` says it could not find one. A lab verb runs only on the person's machine and spends no quota.
+- `operator inspect` / `operator box` / `operator release <N | file> --ticket <ID>`: the
+  inspector runs the person's UI tests under Playwright in a worktree of its own, looks at what
+  they draw, and keeps what it finds in the box until the person releases it into a new ticket.
+  Setup: `operator inspect config tests "<glob>"`, `port_env <VAR>` and `port <n>` (a port of
+  its own, which the app and the Playwright config read from that variable); its rubric is the
+  project's inspect/rubric.md (WCAG 2.2 A and AA unless the person changes it). One look costs
+  quota (one judge call per test file): say so, and run it with `--detach`. Releasing is the
+  person's decision: show them `operator box` and let them choose.
 - YOU CANNOT REACH THE NETWORK OR LOCALHOST: your shell runs `operator` and read-only git and
   nothing else, so a curl is refused by your fence, not by the machine. To know whether a
   project's server answers, run `operator lab status`: it asks the health URL itself and says

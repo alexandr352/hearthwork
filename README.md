@@ -74,6 +74,11 @@ operator run                   # one unit; read what it did
 operator run -n 0 --max-cost 5 # keep going until ready, a question, or $5
 ```
 
+**What your UI tests draw:** `operator inspect` runs your Playwright tests in a worktree of its
+own, cuts the frames a user would see after each step, and has one judge call read them
+against a rubric (WCAG 2.2 A and AA unless you write your own). What it finds waits in a box;
+`operator release 1 --ticket UI-1` turns it into a ticket. See [docs/inspector.md](docs/inspector.md).
+
 When the operator needs you, it halts with a question; answer with
 `operator rule "your decision"`, which binds every later unit. Not sure what to do:
 `operator next`.
@@ -95,6 +100,7 @@ review it and push it yourself.
 - [docs/safety.md](docs/safety.md): the fence, repository hooks, commits, token economy, your
   limits, sleep, the page.
 - [docs/mcp.md](docs/mcp.md): working from your own Claude Code session.
+- [docs/inspector.md](docs/inspector.md): the inspector, its box, its rubric and its setup.
 - [examples/atlas-hearthwork.md](examples/atlas-hearthwork.md): the unedited atlas
   `operator atlas` drafted of this repository.
 
@@ -110,8 +116,9 @@ The tests use a stand-in for the Claude CLI (`tests/fake_claude.py`): they spend
 
 ## Status
 
-0.3: the loop and its recovery, the lab and its A/B, sub-agents and skills, the fence by step,
-the work log with archive and stats, the spirit, MCP mode, the atlas, token economy, your limits. Planned: ticket sources beyond text (GitHub
+0.5: the loop and its recovery, the lab and its A/B, sub-agents and skills, the fence by step,
+the work log with archive and stats, the spirit, MCP mode, the atlas, token economy, your limits,
+seven kinds of work (FAMILY repeats a shipped fix on every site), and the inspector. Planned: ticket sources beyond text (GitHub
 Issues, Jira).
 
 Security: see [SECURITY.md](SECURITY.md). License: MIT.

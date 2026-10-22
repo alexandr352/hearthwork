@@ -235,12 +235,16 @@ class Handler(BaseHTTPRequestHandler):
         return self.send(HTTPStatus.NOT_FOUND, "not found")
 
     def static(self, path):
-        """An archive page, or one record of a unit. Nothing else under the home is served."""
+        """An archive page, one record of a unit, or a frame the inspector cited. Nothing else under the home is served."""
         import re as _re
         m = _re.fullmatch(r"/archive/(?:index\.html|([a-z0-9][a-z0-9._-]{0,63})/([A-Za-z0-9][A-Za-z0-9._-]{0,63})\.html)", path)
         if m:
             f = self.h / path.lstrip("/")
             ctype = "text/html; charset=utf-8"
+        elif _re.fullmatch(r"/projects/[a-z0-9][a-z0-9._-]{0,63}/inspect/captures/[0-9a-f]{10}/u\d{4}/frames/"
+                           r"t\d{2}-(?:\d{3}|end)\.(?:png|jpeg)", path):
+            f = self.h / path.lstrip("/")
+            ctype = "image/png" if path.endswith(".png") else "image/jpeg"
         else:
             m = _re.fullmatch(r"/projects/([a-z0-9][a-z0-9._-]{0,63})/tickets/([A-Za-z0-9][A-Za-z0-9._-]{0,63})"
                               r"/units/(\d{2,4})/([a-z]+\.md)", path)
