@@ -238,6 +238,9 @@ class StepFence(unittest.TestCase):
         self.check(fix, "Edit", {"file_path": f"{self.repo}/tests/test_tax.py"}, "deny")
         self.check(fix, "Edit", {"file_path": f"{self.repo}/src/cart.test.ts"}, "deny")
         self.check(fix, "Write", {"file_path": f"{self.repo}/.hearthwork-scratch/test_probe.py"}, "allow")
+        site = {"kind": "execution", "role": "site-fix"}
+        self.check(site, "Edit", {"file_path": f"{self.repo}/src/app.py"}, "allow")
+        self.check(site, "Edit", {"file_path": f"{self.repo}/tests/test_tax.py"}, "deny")
         guard = {"kind": "execution", "role": "guard"}
         self.check(guard, "Write", {"file_path": f"{self.repo}/tests/test_tax.py"}, "allow")
 

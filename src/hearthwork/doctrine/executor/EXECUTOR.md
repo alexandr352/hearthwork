@@ -89,7 +89,8 @@ LAB block below the atlas. Use its verbs; never start, stop or poll a server you
   <files>`), never by reading its code. A verb the prompt orders and the instrument refuses
   is reported with the refusal verbatim, never re-shaped into another.
 - THE SCRATCH FOLDER (named in the LAB block) is git-excluded: disposable probes live there
-  and only there. An investigation writes nothing else; a fix step writes no real test.
+  and only there. An investigation writes nothing else; a fix or site-fix step writes no
+  real test.
 
 ## Your sub-agents and skills
 

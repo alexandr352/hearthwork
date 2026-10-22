@@ -421,7 +421,8 @@ class Loop:
         self.log(f"{t.id} unit {n}: planning")
         self.progress(t, n, "planning")
         plan, stop = self._ask_operator(
-            t, prompt, "plan", lambda a: contract.check_plan(a, n, chain and chain["chain"], lab_ready), "plan", rec)
+            t, prompt, "plan", lambda a: contract.check_plan(a, n, chain and chain["chain"], lab_ready, chain_state=chain,
+                                                             sha_known=self._commit_known), "plan", rec)
         if stop:
             return None, None, stop
         write_unit_file(t, n, "plan.json", json.dumps(plan, indent=2))
@@ -435,9 +436,22 @@ class Loop:
         if plan.get("lab"):
             rec["lab_requested"] = True
         if plan.get("chain"):
-            t.write("chain.json", {"chain": plan["chain"], "phase": plan["chain_phase"] - 1,
-                                   "total": plan["chain_total"], "unit": n})
+            same = chain and chain.get("chain") == plan["chain"]
+            state = dict(chain) if same else {"mode": plan.get("mode")}
+            if same and plan["chain_total"] != chain.get("total"):
+                state["grown"] = True
+            if plan.get("pattern_commit"):
+                state["pattern_commit"] = plan["pattern_commit"]
+            state.update(chain=plan["chain"], phase=plan["chain_phase"] - 1, total=plan["chain_total"], unit=n)
+            t.write("chain.json", state)
         return n, plan, None
+
+    def _commit_known(self, sha):
+        try:
+            gitinfo.git(self.p.repo, "cat-file", "-e", f"{sha}^{{commit}}")
+            return True
+        except Exception:
+            return False
 
     def _lab_up(self, t, rec, n, plan):
         """Bring the lab's server up for a unit that asked for it. Returns (raised, blocked):
@@ -518,6 +532,7 @@ class Loop:
         diff = gitinfo.compare(self.p.repo, before, gitinfo.snapshot(self.p.repo))
         facts = gitinfo.facts_block(diff, self.p.repo, self.p.trunk)
         facts += self._lab_facts(t, n, rec)
+        facts += self._census_facts(t, plan, report)
         if died:
             facts += f"\nexecutor: FAILED ({died})"
         write_unit_file(t, n, "facts.md", facts)
@@ -526,6 +541,22 @@ class Loop:
                    "tree_clean": diff["tree_clean"], "exec_failed": bool(died)}
         t.write("judge-pending.json", pending)
         return self._judge(t, rec, n, pending)
+
+    def _census_facts(self, t, plan, report):
+        """A FAMILY census: the program counts the SITES rows and their groups, records them on
+        the chain, and tells the judge the length the first site-fix must declare."""
+        chain = t.read("chain.json")
+        if not (chain and chain.get("mode") == "FAMILY" and plan.get("role") == "census"
+                and plan.get("chain") == chain.get("chain")):
+            return ""
+        sites, groups = contract.family_sites(report)
+        chain.update(sites=sites, groups=groups)
+        t.write("chain.json", chain)
+        if not sites:
+            return ("\nFAMILY CENSUS (read by the program): no SITES rows counted. A site-fix will be refused; "
+                    "insert a probe that measures the sites, or void the chain\n")
+        return (f"\nFAMILY CENSUS (read by the program): {sites} site(s) in {groups} group(s). The first site-fix "
+                f"declares chain_total {groups + 2} (census, {groups} site-fix, guard)\n")
 
     def _lab_facts(self, t, n, rec):
         """What the lab recorded for this unit, read by the program (never the report's claim)."""
@@ -581,6 +612,14 @@ class Loop:
         committed_clean = pending.get("commits", 0) > 0 and pending.get("tree_clean")
         if chain and committed_clean and chain["phase"] >= chain["total"]:
             t.clear("chain.json")
+        elif chain and verdict.get("chain_void"):
+            if pending.get("commits", 0) == 0 and pending.get("tree_clean"):
+                t.clear("chain.json")
+                rec["chain_void"] = chain["chain"]
+                self.log(f"{t.id} unit {n}: chain {chain['chain']} voided by the judge (no commit, clean tree)")
+            else:
+                rec["chain_void_refused"] = "the unit committed or left the tree dirty"
+                self.log(f"{t.id} unit {n}: chain {chain['chain']} stays open: a void needs a clean tree and no commit")
         if committed_clean or verdict["action"] != "continue":
             # The work crossed a commit (or stopped): the next unit starts from the files.
             t.drop_session()

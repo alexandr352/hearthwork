@@ -232,3 +232,37 @@ class LoopTest(Fixture):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FamilyTest(Fixture):
+
+    def sha(self):
+        return subprocess.run(["git", "-C", str(self.repo), "rev-parse", "HEAD"], capture_output=True,
+                              text=True, check=True).stdout.strip()
+
+    def test_the_census_counts_sites_and_groups(self):
+        self.flag("family")
+        (self.state / "family").write_text(self.sha())
+        self.run_units(1)
+        chain = json.loads(self.t.path("chain.json").read_text())
+        self.assertEqual((chain["mode"], chain["sites"], chain["groups"], chain["total"]), ("FAMILY", 3, 2, 3))
+        self.assertEqual(chain["pattern_commit"], self.sha())
+        facts = (self.t.unit_dir(1) / "facts.md").read_text()
+        self.assertIn("FAMILY CENSUS (read by the program): 3 site(s) in 2 group(s)", facts)
+        self.assertIn("chain_total 4", facts)
+
+    def test_an_unknown_pattern_commit_is_refused(self):
+        self.flag("family")
+        (self.state / "family").write_text("deadbeef")
+        self.run_units(1)
+        self.assertFalse(self.t.path("chain.json").exists(), "no plan with an unknown sha ever ran")
+        plans = [c for c in self.calls() if c["prompt"].startswith("DEVIATION")]
+        self.assertTrue(plans and "is not a commit of this repository" in plans[0]["prompt"])
+
+    def test_a_void_closes_the_chain_on_a_clean_tree(self):
+        self.flag("family")
+        (self.state / "family").write_text(self.sha())
+        self.flag("judge-void")
+        self.run_units(1)
+        self.assertFalse(self.t.path("chain.json").exists(), "the judge voided the chain")
+        self.assertEqual(read_meter(self.p)[-1].get("chain_void"), "totals")

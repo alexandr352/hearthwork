@@ -30,6 +30,7 @@ makes the one commit. Each chain has a **kind of work**, chosen by an ordered te
 
 | Kind | When |
 |---|---|
+| FAMILY | a fix for this defect already shipped here, and more places carry the same defect: repeat that fix on all of them in one commit |
 | STABILIZATION | something is broken: reproduce it, fix it the smallest safe way, guard it with a test |
 | FEATURE | the product lacks a behaviour: find where it goes, build it, cover it with tests |
 | CONFIGURATION | the whole change is configuration files |
@@ -41,6 +42,7 @@ Each kind has a shape, and each step its tool:
 
 | Kind | Steps |
 |---|---|
+| FAMILY | **census** (the shipped fix read from its commit; every further site measured and grouped by what it is built from) → one **site-fix** per group (product code only, the fix applied as it shipped) → **guard** (one test over every site, proven by the lab's A/B, then the commit) |
 | STABILIZATION | **reproduce** (a disposable probe measures the defect) → **fix** (product code only; the fence refuses a test here) → **guard** (the real test, proven by the lab's A/B, then the commit) |
 | FEATURE | **locate** → **build** → **cover** (tests, review, commit) |
 | REFACTOR | **census** (every consumer) → **apply** → **verify** (the existing tests, unchanged, green) |
@@ -48,12 +50,21 @@ Each kind has a shape, and each step its tool:
 | MIGRATION | **survey** → one step at a time → **cutover** |
 | AUDIT | investigations only |
 
+FAMILY is tested first, because a family site is also a defect and STABILIZATION would
+otherwise always win. It opens only on a commit the program finds in the repository
+(`pattern_commit`). The program counts the census's sites and groups itself and tells the
+judge; the chain then grows once, to one site-fix per group plus the census and the guard.
+A site that does not fit the pattern is never forced: it leaves the family and gets its own
+STABILIZATION chain after the family's commit. A chain whose premise turns out false (the
+defect does not reproduce, no further site carries it) is voided by the judge, and the
+program closes it only when the unit made no commit and left the tree clean.
+
 ## The lab and the proof
 
 A guard test means something only if it fails without the fix and passes with it. The lab
 proves that: `operator lab ab <test>` runs the test on the uncommitted work (CARRIED) and on
 HEAD with the test file kept (BASE), and answers **GUARDS** when it is red on BASE and green on
-CARRIED. A STABILIZATION commit must order it (the program checks the plan), and the program
+CARRIED. A STABILIZATION or FAMILY commit must order it (the program checks the plan), and the program
 records the verdict itself, so the judge reads it like a git fact, never as the report's claim.
 
 By default BASE runs in a throwaway git worktree, so your checkout is never touched. When the

@@ -68,6 +68,7 @@ def phase_line(rec):
 
 
 MODES = {
+    "FAMILY": "repeating a fix that already shipped on every other place with the same defect: count them, fix them group by group, one test over all of them",
     "STABILIZATION": "fixing something broken: reproduce it, fix it the smallest safe way, guard it with a test",
     "FEATURE": "adding behaviour the product does not have: find where it goes, build it, cover it with tests",
     "REFACTOR": "changing structure while behaviour stays exactly the same",

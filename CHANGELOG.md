@@ -4,6 +4,22 @@ To update: `~/.hearthwork-venv/bin/pip install --upgrade git+https://github.com/
 then `operator upgrade`, then restart `operator ui`. Versions marked **upgrade** change the doctrine
 the operator or the spirit reads, so `operator upgrade` matters for them.
 
+## 0.4.0 (upgrade)
+- **FAMILY**, a seventh kind of work: a fix for a defect has already shipped, and more places carry the same
+  defect. Tested before STABILIZATION (a family site is a defect too, and STABILIZATION would always win).
+  One chain, one commit: **census** (the shipped fix read from its commit; every further site measured and
+  grouped by what it is built from) -> one **site-fix** per group (the fix applied as it shipped; no test,
+  no commit) -> **guard** (one test over every site, proven by `operator lab ab`).
+- The program checks the shape: a FAMILY opens on `pattern_commit`, a commit it finds in the repository;
+  it counts the census's SITES rows and groups itself, tells the judge, and lets the chain grow once, to one
+  site-fix per group plus two. A site-fix names its `site_group`, carries the census's blocks and reports
+  every site that does not fit; that site leaves the family as its own STABILIZATION chain. The fence
+  refuses a test in a site-fix, as in a fix.
+- A judge can void a chain whose premise turned out false (`"chain_void": true`): the defect does not
+  reproduce, no further site carries it. The program closes the chain only when the unit made no commit and
+  left the tree clean.
+- The census skill gained the site census: PATTERN, SITES and BLOCKED blocks, every site measured.
+
 ## 0.3.7
 - The browser tab says hearthwork in lower case too: "hearthwork log", "stats · hearthwork", "archive · hearthwork".
 

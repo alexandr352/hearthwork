@@ -4,15 +4,90 @@ A broken answer is never silently retried or repaired here: the deviation is nam
 and handed back to the same session for reconsideration.
 """
 
+import re
+
 BUDGETS = {"LOW": (2, 150), "MEDIUM": (5, 300), "HIGH": (10, 600)}
 FINDINGS_MARK = "| Finding:"
 SCOPE_MARK = "SCOPE CONSTRAINT:"
 PROMPT_MAX = 24000
-MODES = ("STABILIZATION", "FEATURE", "REFACTOR", "CONFIGURATION", "MIGRATION", "AUDIT")
+MODES = ("FAMILY", "STABILIZATION", "FEATURE", "REFACTOR", "CONFIGURATION", "MIGRATION", "AUDIT")
+FAMILY_ROLES = ("census", "probe", "site-fix", "blast-radius", "guard")
+SHA = re.compile(r"^[0-9a-f]{7,40}$")
+GROUP = re.compile(r"^\d+(\s*,\s*\d+)*$")
 
 
-def check_plan(plan, unit, open_chain=None, lab_ready=False):
-    """A list of deviations; empty when the plan keeps its contract."""
+def family_sites(report):
+    """(sites, groups) counted from a census report's SITES block: one row per site,
+    `[n] File | Line | measured state | deviation | group`. The group is a row's last field
+    when it has five; a row without one is a group of its own. (0, 0) when there is no block."""
+    m = re.search(r"(?ims)^\s*SITES:(.*?)(?=^\s*[A-Z][A-Z ]+:|\Z)", report or "")
+    if not m:
+        return 0, 0
+    rows = [ln for ln in m.group(1).splitlines() if re.match(r"^\s*\[\d+\]", ln)]
+    groups = set()
+    for i, ln in enumerate(rows):
+        f = [x.strip() for x in ln.split("|")]
+        groups.add(f[-1].lower() if len(f) >= 5 and f[-1] else f"site {i + 1}")
+    return len(rows), len(groups)
+
+
+def _check_family(plan, chain_state, sha_known, dev):
+    """The FAMILY shape: it opens on a shipped pattern with a census, fixes one group of like
+    sites per phase, re-declares its length once, and ends in one guard over every site."""
+    kind, role, prompt = plan.get("kind"), plan.get("role"), plan.get("prompt") or ""
+    phase, total = plan.get("chain_phase"), plan.get("chain_total")
+    if not plan.get("chain"):
+        dev.append("a FAMILY is a chain: census, one site-fix per group of like sites, guard")
+        return
+    if role not in FAMILY_ROLES:
+        dev.append(f'a FAMILY step\'s "role" is one of {", ".join(FAMILY_ROLES)}')
+    opening = not chain_state or chain_state.get("chain") != plan.get("chain")
+    if opening:
+        if phase != 1 or role != "census" or kind != "investigation":
+            dev.append("a FAMILY opens with its census: phase 1, role census, an investigation")
+        if total != 3:
+            dev.append('a FAMILY opens with "chain_total": 3 (census, site-fix, guard); the first site-fix '
+                       "re-declares it to the number of groups + 2")
+        sha = str(plan.get("pattern_commit") or "").strip().lower()
+        if not SHA.match(sha):
+            dev.append('a FAMILY names the shipped fix it repeats: "pattern_commit" is that commit\'s sha. '
+                       "Without a shipped pattern the first site is a defect of its own (STABILIZATION)")
+        elif sha_known and not sha_known(sha):
+            dev.append(f'"pattern_commit" {sha} is not a commit of this repository: a FAMILY repeats a fix '
+                       "that shipped here; without one the first site is a defect of its own (STABILIZATION)")
+        for block in ("PATTERN:", "SITES:"):
+            if block not in prompt:
+                dev.append(f"the census prompt asks for the {block} block by name")
+        return
+    groups = int(chain_state.get("groups") or 0)
+    if isinstance(total, int) and total != chain_state.get("total"):
+        if not (role == "site-fix" and phase == 2 and groups and total == groups + 2
+                and not chain_state.get("grown")):
+            dev.append(f"a FAMILY changes its length once, at its first site-fix, to groups + 2"
+                       f"{f' = {groups + 2}' if groups else ''}; it is {chain_state.get('total')}")
+    if role == "site-fix":
+        if not groups:
+            dev.append("the census left no SITES rows the program could count: insert a probe that "
+                       "measures the sites, or void the chain")
+        sg = str(plan.get("site_group") or "").strip()
+        if not GROUP.match(sg):
+            dev.append('a site-fix names its group: "site_group" is the SITES row numbers it fixes, e.g. "1,2,4"')
+        elif chain_state.get("sites") and any(not 1 <= int(x) <= chain_state["sites"] for x in sg.split(",")):
+            dev.append(f'"site_group" names a row the census does not have (it has {chain_state["sites"]})')
+        if kind != "execution" or plan.get("commit_expected"):
+            dev.append("a site-fix is an execution that does not commit")
+        for block in ("PATTERN:", "SITES:", "DOES NOT FIT:"):
+            if block not in prompt:
+                dev.append(f"a site-fix prompt carries {block}" + (
+                    " (the census's block, verbatim)" if block != "DOES NOT FIT:" else
+                    " (every site it leaves untouched, or none)"))
+    if role == "guard" and "SITES:" not in prompt:
+        dev.append("the FAMILY guard prompt carries the SITES: block: one test over every site")
+
+
+def check_plan(plan, unit, open_chain=None, lab_ready=False, chain_state=None, sha_known=None):
+    """A list of deviations; empty when the plan keeps its contract. chain_state is the open
+    chain's record (chain.json); sha_known tells whether a commit is in the repository."""
     if not isinstance(plan, dict):
         return ["the answer is not one JSON object"]
     action = plan.get("action")
@@ -84,9 +159,15 @@ def check_plan(plan, unit, open_chain=None, lab_ready=False):
             dev.append("the last phase of a chain is the committing execution")
     if "lab" in plan and not isinstance(plan.get("lab"), bool):
         dev.append('"lab" is true when the unit needs the lab\'s server up, else false or absent')
-    if lab_ready and mode == "STABILIZATION" and kind == "execution" and commit is True \
+    cs = chain_state or {}
+    in_family = mode == "FAMILY" or (cs.get("mode") == "FAMILY" and bool(chain) and chain == cs.get("chain"))
+    if in_family:
+        if mode not in (None, "FAMILY"):
+            dev.append(f'chain "{chain}" is a FAMILY: its steps carry "mode": "FAMILY"')
+        _check_family(plan, chain_state, sha_known, dev)
+    if lab_ready and (mode in ("STABILIZATION", "FAMILY") or in_family) and kind == "execution" and commit is True \
             and "operator lab ab" not in prompt:
-        dev.append("a STABILIZATION commit proves its guard first: the prompt orders "
+        dev.append(f"a {'FAMILY' if in_family else 'STABILIZATION'} commit proves its guard first: the prompt orders "
                    "`operator lab ab <the guard test files>` and asks for its AB VERDICT line verbatim; "
                    "it commits only on GUARDS")
     if open_chain and chain and chain != open_chain:
@@ -116,6 +197,8 @@ def check_verdict(verdict):
     for k in ("next", "reason"):
         if not str(verdict.get(k) or "").strip():
             dev.append(f'"{k}" is missing')
+    if "chain_void" in verdict and not isinstance(verdict["chain_void"], bool):
+        dev.append('"chain_void" is true when the chain\'s first phase shows its premise false, else absent')
     summary = verdict.get("summary")
     if summary is not None and not (isinstance(summary, str) and 0 < len(summary) <= 400):
         dev.append('"summary" is one plain sentence of at most 400 characters')

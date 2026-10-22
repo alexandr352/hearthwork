@@ -46,7 +46,14 @@ if prompt.startswith("PHASE: PLAN") or prompt.startswith("DEVIATION") and "PLAN"
     m = re.search(r"UNIT: (\d+)", prompt)
     n = int(m.group(1)) if m else int((state / "last-unit").read_text()) if (state / "last-unit").exists() else 1
     (state / "last-unit").write_text(str(n))
-    if n == 1:
+    if n == 1 and (state / "family").exists():
+        plan = {"action": "execute", "unit": 1, "kind": "investigation", "title": "count the other totals",
+                "mode": "FAMILY", "role": "census", "chain_steps": ["census", "site-fix", "guard"],
+                "pattern_commit": (state / "family").read_text().strip(),
+                "budget": "LOW", "commit_expected": False, "chain": "totals", "chain_phase": 1, "chain_total": 3,
+                "prompt": "SCOPE CONSTRAINT: Read at most 2 files. Read at most 150 lines per file. Do not exceed these limits regardless of what you find. If the question cannot be answered within these limits, stop and report what you found and what remains unread.\nQUESTIONS: where else is tax missing? Return PATTERN: and SITES: blocks.\nRETURN FORMAT: [N] File: <path> | Line: <line> | Finding: <fact> | Confidence: <high>",
+                "notes": "census"}
+    elif n == 1:
         plan = {"action": "execute", "unit": 1, "kind": "investigation", "title": "find the total function",
                 "mode": "STABILIZATION", "role": "reproduce", "chain_steps": ["reproduce", "guard"],
                 "budget": "LOW", "commit_expected": False, "chain": "total", "chain_phase": 1, "chain_total": 2,
@@ -62,6 +69,9 @@ if prompt.startswith("PHASE: PLAN") or prompt.startswith("DEVIATION") and "PLAN"
 if prompt.startswith("PHASE: JUDGE"):
     n = int(re.search(r"UNIT: (\d+)", prompt).group(1))
     action = "ticket-ready" if n >= 2 else "continue"
+    if flag("judge-void"):
+        envelope(json.dumps({"action": "continue", "unit_done": True, "units_done": n, "units_planned": n,
+                             "next": "re-plan", "reason": "no further site", "chain_void": True}))
     envelope(json.dumps({"action": action, "unit_done": True, "units_done": n, "units_planned": 2,
                          "next": "unit 2: the fix" if n < 2 else "review and merge", "reason": f"unit {n} did what it said",
                          "summary": "Found where the total is computed." if n < 2 else "Totals now include tax."}))
@@ -105,4 +115,9 @@ if "TARGET FILES" in prompt:
     subprocess.run(["git", "add", "total.txt"], check=True)
     subprocess.run(["git", "commit", "-q", "-m", "Totals include tax"], check=True)
     envelope("STATUS: success\nFILES CHANGED:\ntotal.txt\nGATES: none named")
+if "SITES:" in prompt:
+    envelope("[1] File: total.txt | Line: 1 | Finding: total = price | Confidence: high\n"
+             "PATTERN: abc1234 | adds tax | none\nSITES:\n[1] cart.txt | 1 | no tax | missing | Total\n"
+             "[2] invoice.txt | 3 | no tax | missing | Total\n[3] quote.txt | 2 | no tax | missing | Quote\n"
+             "BLOCKED: none\nOPEN QUESTIONS: none")
 envelope("[1] File: total.txt | Line: 1 | Finding: total = price | Confidence: high\nOPEN QUESTIONS: none")

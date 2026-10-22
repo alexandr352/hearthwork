@@ -298,7 +298,7 @@ def step_write(p, repo):
     if POLICY.get("kind") == "investigation" and not in_scratch and under(p, [repo]):
         return ("an investigation changes nothing in the repository: a disposable probe goes in "
                 f"{os.path.relpath(scratch, repo) if scratch else 'the scratch folder'}/")
-    if POLICY.get("role") == "fix" and not in_scratch and under(p, [repo]) and TEST_FILE.search(os.path.relpath(p, repo)):
+    if POLICY.get("role") in ("fix", "site-fix") and not in_scratch and under(p, [repo]) and TEST_FILE.search(os.path.relpath(p, repo)):
         return ("a fix step writes no test: a probe goes in the scratch folder, and the guard step "
                 "writes the test that proves the fix")
     return None

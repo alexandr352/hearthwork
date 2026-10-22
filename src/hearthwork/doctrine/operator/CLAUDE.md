@@ -62,6 +62,11 @@ exactly what it names and answer again).
    read-only investigation between phases when something is unclear).
 4b. THE MODE is the shape of the work, chosen ONCE when a chain opens (or for a standalone
    unit) by the FIRST test that holds, each with its evidence (a report line or a ticket line):
+     T1F FAMILY     a fix for this defect has already SHIPPED here (a commit, with the test
+                    that guards it) and two or more further places carry the same deviation
+                    -> FAMILY: repeat that fix on every place in one chain and one commit.
+                    Tested BEFORE T1, which would always win: a family site is a defect too.
+                    Its evidence is the shipped commit's sha; without one, the first site is T1
      T1 DEFECT      behaviour differs from what is intended, or a test that should pass fails
                     -> STABILIZATION: reproduce, fix the smallest safe way, guard with a test
      T2 CAPABILITY  the ticket asks for behaviour the product does not have
@@ -85,8 +90,39 @@ exactly what it names and answer again).
                     verify (the last phase: the existing tests named, green, unchanged; commit)
      CONFIGURATION  locate -> apply (the last phase: commit)
      MIGRATION      survey -> one execution per safe step -> cutover (the last phase: commit)
+     FAMILY         census (investigation: the PATTERN as the shipped commit applied it, and
+                    every further site MEASURED and grouped by what it is built from) ->
+                    site-fix (one execution per GROUP of like sites; no test, no commit) ->
+                    guard (the last phase: ONE test over every site, `operator lab ab`, commit)
      AUDIT          investigations only: the reader and the prober answer, nothing is changed
    Name each step with its role word exactly as above; the fence narrows the executor by it.
+4f. A FAMILY, step by step. The program checks each rule here; a plan that breaks one comes
+   back to you.
+   - It OPENS with "chain_total": 3, "chain_steps": ["census", "site-fix", "guard"], and
+     "pattern_commit": the shipped fix's sha (the program looks it up in the repository).
+   - The census prompt asks, by name, for three blocks (load the census skill's site census):
+       PATTERN: <commit> | <what it changed> | <known side effects>
+       SITES: [n] <file> | <line> | <measured state> | <deviation from the pattern> | <group>
+       BLOCKED: <what keeps a site from being measured, or none>
+     A site read only from the source is marked unmeasured. The group names what like sites
+     share (the same component, helper or style); a site alone names itself. "The pattern did
+     not ship" and "no further site carries it" are complete answers: void the chain.
+   - The program counts the SITES rows and the groups and gives you the count in the facts
+     (FAMILY CENSUS). The first site-fix re-declares "chain_total" to groups + 2, once; no
+     other resize is accepted.
+   - Each site-fix carries "site_group": the SITES row numbers it fixes ("1,2,4"). Its prompt
+     carries the PATTERN: and SITES: blocks verbatim from the census report and the line
+     THIS GROUP: SITES[<rows>]; it orders the deviation seen on each site before the edit and
+     gone after, the pattern applied AS THE SHIPPED COMMIT APPLIED IT (an improvement is a
+     finding, never an edit), no test and no commit, and a DOES NOT FIT: block naming every
+     site it left untouched and why (or DOES NOT FIT: none). The tree stays dirty for the
+     next group by design.
+   - The guard carries the SITES: block and writes ONE test over all of them (a table of
+     sites, one test body), proven by `operator lab ab`, and reports red-without and
+     green-with PER SITE. A site green both ways is a finding: the guard is retried or the
+     site leaves the family. The commit subject names the family and the count.
+   - A site that does not fit LEAVES: never forced into the family, it is planned after the
+     family's commit as its own STABILIZATION chain in this ticket.
 4e. THE LAB. The PLAN input carries THE LAB block: what the checkout's lab can run. When it
    has a test command, gates run through `operator lab gate <files>` and a STABILIZATION
    guard proves itself with `operator lab ab` (the program checks your prompt for it). When a
@@ -105,7 +141,7 @@ exactly what it names and answer again).
        {"action": "execute",
         "unit": <n, as given>,
         "kind": "investigation" | "execution",
-        "mode": "STABILIZATION" | "FEATURE" | "REFACTOR" | "CONFIGURATION" | "MIGRATION" | "AUDIT",
+        "mode": "FAMILY" | "STABILIZATION" | "FEATURE" | "REFACTOR" | "CONFIGURATION" | "MIGRATION" | "AUDIT",
         "role": "<this step, one short lowercase word>",
         "title": "<a short line: what this unit does>",
         "budget": "LOW" | "MEDIUM" | "HIGH" (investigation) | "NONE" (execution),
@@ -113,6 +149,8 @@ exactly what it names and answer again).
         "lab": <true when the unit needs the lab's server up, else false>,
         "chain": "<name>" | null, "chain_phase": <n> | null, "chain_total": <m> | null,
         "chain_steps": ["<role of phase 1>", "...", "<role of phase m>"]  (when a chain opens),
+        "pattern_commit": "<sha>"  (a FAMILY's opening census only),
+        "site_group": "<SITES rows, e.g. 1,2,4>"  (a FAMILY site-fix only),
         "prompt": "<the executor prompt, see below>",
         "notes": "<one line for the log>"}
 
@@ -151,8 +189,8 @@ EXECUTION prompts:
 - the GATES by name: the exact test files, run once each through `operator lab gate <files>`
   (or the atlas's form when the lab has no test command), with the known pre-existing
   failures so a red gate can be attributed;
-- on a STABILIZATION guard: `operator lab ab <the guard test files>`, its AB VERDICT line
-  quoted verbatim, and commit only on GUARDS;
+- on a STABILIZATION or FAMILY guard: `operator lab ab <the guard test files>`, its AB
+  VERDICT line quoted verbatim, and commit only on GUARDS;
 - whether to commit, and on the first execution of a ticket, to create the branch
   `<prefix><TICKET>-<slug>` from the trunk;
 - what to return beyond the standard report.
@@ -189,6 +227,14 @@ report.
    if the branch is gone without merging, retire the entry.
 4. Update `plan.md`: mark the unit done or failed, and RE-PLAN from the evidence — add
    the units it shows are needed, remove the ones it made unnecessary.
+4b. After a FAMILY census, write the groups into plan.md, one site-fix line each
+   (`(chain <name> 2/<groups + 2> · site-fix, group 1 of <k>: sites 1,2,4)`), using the
+   count in the FAMILY CENSUS facts. After a site-fix, every site under DOES NOT FIT leaves
+   the family: plan it after the family's commit as its own STABILIZATION chain.
+4c. A CHAIN WHOSE PREMISE IS FALSE IS VOIDED, never carried to a commit it cannot earn:
+   the defect could not be reproduced, the pattern did not ship, no further site carries
+   it. Say "chain_void": true in your verdict; the program closes the chain only when the
+   unit made no commit and left the tree clean. Re-plan from what the unit showed.
 5. Rewrite `context-full.md`, the COLD-START HANDOVER: what was decided and why, what
    was tried and abandoned (so it is not tried again), what the environment taught, and
    where the work stands. About 6 KB, rewritten whole, never appended. Never duplicate
@@ -201,7 +247,8 @@ report.
         "units_planned": <count of all units in plan.md>,
         "next": "<one line: the next unit, or what the person should do>",
         "reason": "<one line: your verdict and why>",
-        "summary": "<one plain sentence for a person reading the work log: what this unit found or changed>"}
+        "summary": "<one plain sentence for a person reading the work log: what this unit found or changed>",
+        "chain_void": true  (only when the open chain's premise is false; otherwise leave it out)}
 
    "ticket-ready" means every unit is done, the gates were green and the work is
    committed; before it, run the CLOSE PASS: every knowledge entry tagged with this
